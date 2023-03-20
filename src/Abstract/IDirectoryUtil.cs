@@ -16,4 +16,10 @@ public interface IDirectoryUtil
     void DeleteIfExists(string directory);
 
     void CreateIfDoesNotExist(string directory);
+
+    /// <summary>
+    /// Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)!
+    /// </summary>
+    [Pure]
+    string GetWorkingDirectory();
 }

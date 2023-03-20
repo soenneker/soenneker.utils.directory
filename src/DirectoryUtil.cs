@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Soenneker.Utils.Directory.Abstract;
+using System.Reflection;
 
 namespace Soenneker.Utils.Directory;
 
@@ -47,5 +48,10 @@ public class DirectoryUtil : IDirectoryUtil
 
         if (!System.IO.Directory.Exists(directory))
             System.IO.Directory.CreateDirectory(directory);
+    }
+
+    public string GetWorkingDirectory()
+    {
+       return Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)!;
     }
 }

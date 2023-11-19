@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using Soenneker.Utils.Directory.Abstract;
 using System.Reflection;
+using System;
 
 namespace Soenneker.Utils.Directory;
 
@@ -29,29 +30,51 @@ public class DirectoryUtil : IDirectoryUtil
 
     public void Delete(string directory)
     {
-        _logger.LogDebug("Deleting directory: {dir}...", directory);
+        _logger.LogDebug("Deleting directory ({dir}) ...", directory);
 
         System.IO.Directory.Delete(directory, true);
     }
 
     public void DeleteIfExists(string directory)
     {
-        _logger.LogDebug("Deleting directory if it exists: {dir} ...", directory);
+        _logger.LogDebug("Deleting directory ({dir}) if it exists...", directory);
 
         if (System.IO.Directory.Exists(directory))
             System.IO.Directory.Delete(directory, true);
     }
 
-    public void CreateIfDoesNotExist(string directory)
+    public bool CreateIfDoesNotExist(string directory)
     {
-        _logger.LogDebug("Creating directory {dir} if it doesn't exist...", directory);
+        _logger.LogDebug("Creating directory ({dir}) if it doesn't exist...", directory);
 
-        if (!System.IO.Directory.Exists(directory))
-            System.IO.Directory.CreateDirectory(directory);
+        if (System.IO.Directory.Exists(directory))
+            return false;
+
+        System.IO.Directory.CreateDirectory(directory);
+        return true;
     }
 
-    public string GetWorkingDirectory()
+    public string GetWorkingDirectory(bool log = false)
     {
-       return Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)!;
+        var result = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)!;
+
+        if (log)
+            _logger.LogDebug("Retrieved working directory ({dir})", result);
+
+        return result;
+    }
+    
+    public static string GetNewTempDirectoryPath()
+    {
+        string result = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+
+        return result;
+    }
+
+    public string CreateTempDirectory()
+    {
+        var path = GetNewTempDirectoryPath();
+        _ = CreateIfDoesNotExist(path);
+        return path;
     }
 }

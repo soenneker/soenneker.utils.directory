@@ -3,6 +3,9 @@ using System.Diagnostics.Contracts;
 
 namespace Soenneker.Utils.Directory.Abstract;
 
+/// <summary>
+/// A utility library encapsulating various directory methods
+/// </summary>
 public interface IDirectoryUtil
 {
     [Pure]
@@ -10,6 +13,12 @@ public interface IDirectoryUtil
 
     [Pure]
     List<string> GetAllDirectoriesRecursively(string directory);
+
+    [Pure]
+    IEnumerable<string> GetAllAsEnumerable(string directory);
+
+    [Pure]
+    IEnumerable<string> GetAllRecursivelyAsEnumerable(string directory);
 
     /// <summary>
     /// Will throw various exceptions if it doesn't exist
@@ -20,7 +29,7 @@ public interface IDirectoryUtil
     void DeleteIfExists(string directory);
 
     /// <returns>True if directory was created, false if it already existed</returns>
-    bool CreateIfDoesNotExist(string directory);
+    bool CreateIfDoesNotExist(string directory, bool log = true);
 
     /// <summary>
     /// Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)!

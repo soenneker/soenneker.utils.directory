@@ -10,17 +10,19 @@ public static class DirectoryUtilRegistrar
     /// Adds IDirectoryUtil as a scoped service. <para/>
     /// Shorthand for <code>services.TryAddScoped</code> <para/>
     /// </summary>
-    public static void AddDirectoryUtilAsScoped(this IServiceCollection services)
+    public static IServiceCollection AddDirectoryUtilAsScoped(this IServiceCollection services)
     {
         services.TryAddScoped<IDirectoryUtil, DirectoryUtil>();
+        return services;
     }
 
     /// <summary>
     /// Adds IDirectoryUtil as a singleton service. <para/>
     /// Shorthand for <code>services.TryAddSingleton</code> <para/>
     /// </summary>
-    public static void AddDirectoryUtilAsSingleton(this IServiceCollection services)
+    public static IServiceCollection AddDirectoryUtilAsSingleton(this IServiceCollection services)
     {
         services.TryAddSingleton<IDirectoryUtil, DirectoryUtil>();
+        return services;
     }
 }

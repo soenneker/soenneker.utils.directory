@@ -38,6 +38,6 @@
         <None Include="..\icon.png" Pack="true" PackagePath="\" />
 
         <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.4" />
-        <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.4" />
+        <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.5" />
     </ItemGroup>
 </Project>

@@ -1,4 +1,3 @@
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Serilog;
 using Soenneker.Fixtures.Unit;
@@ -23,7 +22,7 @@ public class Fixture : UnitFixture
             builder.AddSerilog(dispose: true);
         });
 
-        IConfiguration config = TestUtil.BuildConfig();
+        var config = TestUtil.BuildConfig();
         services.AddSingleton(config);
 
         services.AddDirectoryUtilAsScoped();

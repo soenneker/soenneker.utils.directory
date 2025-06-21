@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Soenneker.Utils.Directory.Abstract;
+using Soenneker.Utils.Path.Registrars;
 
 namespace Soenneker.Utils.Directory.Registrars;
 
@@ -12,7 +13,7 @@ public static class DirectoryUtilRegistrar
     /// </summary>
     public static IServiceCollection AddDirectoryUtilAsScoped(this IServiceCollection services)
     {
-        services.TryAddScoped<IDirectoryUtil, DirectoryUtil>();
+        services.AddPathUtilAsScoped().TryAddScoped<IDirectoryUtil, DirectoryUtil>();
         return services;
     }
 
@@ -22,7 +23,7 @@ public static class DirectoryUtilRegistrar
     /// </summary>
     public static IServiceCollection AddDirectoryUtilAsSingleton(this IServiceCollection services)
     {
-        services.TryAddSingleton<IDirectoryUtil, DirectoryUtil>();
+        services.AddPathUtilAsSingleton().TryAddSingleton<IDirectoryUtil, DirectoryUtil>();
         return services;
     }
 }

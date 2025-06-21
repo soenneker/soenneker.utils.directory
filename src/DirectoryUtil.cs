@@ -6,16 +6,21 @@ using Soenneker.Utils.Directory.Abstract;
 using System.Reflection;
 using System;
 using System.Diagnostics.Contracts;
+using Soenneker.Utils.Path.Abstract;
+using System.Threading.Tasks;
+using System.Threading;
 
 namespace Soenneker.Utils.Directory;
 
 ///<inheritdoc cref="IDirectoryUtil"/>
-public class DirectoryUtil : IDirectoryUtil
+public sealed class DirectoryUtil : IDirectoryUtil
 {
+    private readonly IPathUtil _pathUtil;
     private readonly ILogger<DirectoryUtil> _logger;
 
-    public DirectoryUtil(ILogger<DirectoryUtil> logger)
+    public DirectoryUtil(IPathUtil pathUtil, ILogger<DirectoryUtil> logger)
     {
+        _pathUtil = pathUtil;
         _logger = logger;
     }
 
@@ -68,7 +73,7 @@ public class DirectoryUtil : IDirectoryUtil
 
     public string GetWorkingDirectory(bool log = false)
     {
-        var result = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)!;
+        var result = System.IO.Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)!;
 
         if (log)
             _logger.LogDebug("Retrieved working directory ({dir})", result);
@@ -87,10 +92,9 @@ public class DirectoryUtil : IDirectoryUtil
         var directories = System.IO.Directory.GetDirectories(basePath, "*", SearchOption.AllDirectories);
 
         var orderedDirectories = directories
-            .OrderBy(dir => dir.Split(Path.DirectorySeparatorChar).Length);
+            .OrderBy(dir => dir.Split(System.IO.Path.DirectorySeparatorChar).Length);
 
-        var result = orderedDirectories.ToList();
-        return result;
+        return orderedDirectories.ToList();
     }
 
     /// <summary>
@@ -100,15 +104,87 @@ public class DirectoryUtil : IDirectoryUtil
     [Pure]
     public static string GetNewTempDirectoryPath()
     {
-        var result = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
-
-        return result;
+        return System.IO.Path.Combine(System.IO.Path.GetTempPath(), Guid.NewGuid().ToString());
     }
 
-    public string CreateTempDirectory()
+    public ValueTask<string> CreateTempDirectory(CancellationToken cancellationToken = default)
     {
-        var path = GetNewTempDirectoryPath();
-        _ = CreateIfDoesNotExist(path);
-        return path;
+        return _pathUtil.GetUniqueTempDirectory(null, true, cancellationToken);
+    }
+
+    public bool Exists(string directory)
+    {
+        return System.IO.Directory.Exists(directory);
+    }
+
+    public long GetSizeInBytes(string directory)
+    {
+        if (!System.IO.Directory.Exists(directory))
+            return 0;
+
+        return System.IO.Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories)
+            .Sum(file => new FileInfo(file).Length);
+    }
+
+    public List<string> GetEmptyDirectories(string root)
+    {
+        return System.IO.Directory.EnumerateDirectories(root, "*", SearchOption.AllDirectories)
+            .Where(d => !System.IO.Directory.EnumerateFileSystemEntries(d).Any())
+            .ToList();
+    }
+
+    public void DeleteEmptyDirectories(string root)
+    {
+        foreach (var dir in GetEmptyDirectories(root))
+        {
+            _logger.LogDebug("Deleting empty directory: {dir}", dir);
+            System.IO.Directory.Delete(dir);
+        }
+    }
+
+    public List<string> GetDirectoriesContainingFile(string root, string fileName)
+    {
+        return System.IO.Directory.EnumerateDirectories(root, "*", SearchOption.AllDirectories)
+            .Where(d => File.Exists(System.IO.Path.Combine(d, fileName)))
+            .ToList();
+    }
+
+    public List<string> GetFilesByExtension(string directory, string extension, bool recursive = false)
+    {
+        return System.IO.Directory.EnumerateFiles(directory, $"*.{extension.TrimStart('.')}",
+                recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly)
+            .ToList();
+    }
+
+    public async ValueTask CopyDirectory(string sourceDir, string destDir, bool overwrite = true, CancellationToken cancellationToken = default)
+    {
+        if (!System.IO.Directory.Exists(sourceDir))
+            throw new DirectoryNotFoundException($"Source directory not found: {sourceDir}");
+
+        System.IO.Directory.CreateDirectory(destDir);
+
+        foreach (var file in System.IO.Directory.GetFiles(sourceDir))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var destFile = System.IO.Path.Combine(destDir, System.IO.Path.GetFileName(file));
+
+            await using var sourceStream = File.Open(file, FileMode.Open, FileAccess.Read, FileShare.Read);
+            await using var destinationStream = File.Create(destFile);
+            await sourceStream.CopyToAsync(destinationStream, 81920, cancellationToken);
+        }
+
+        foreach (var subdir in System.IO.Directory.GetDirectories(sourceDir))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var destSubdir = System.IO.Path.Combine(destDir, System.IO.Path.GetFileName(subdir));
+            await CopyDirectory(subdir, destSubdir, overwrite, cancellationToken);
+        }
+    }
+
+    public static string Normalize(string directory)
+    {
+        return System.IO.Path.GetFullPath(new Uri(directory).LocalPath).TrimEnd(System.IO.Path.DirectorySeparatorChar);
     }
 }

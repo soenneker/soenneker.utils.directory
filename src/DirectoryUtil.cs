@@ -196,7 +196,7 @@ public sealed class DirectoryUtil : IDirectoryUtil
 
         try
         {
-            string indent = new string(' ', indentLevel * 2);
+            var indent = new string(' ', indentLevel * 2);
 
             // Log current directory
             _logger.LogInformation("{Indent}📁 {Directory}", indent, System.IO.Path.GetFileName(path));
@@ -223,5 +223,47 @@ public sealed class DirectoryUtil : IDirectoryUtil
         {
             _logger.LogError(ex, "Error reading directory {Path}", path);
         }
+    }
+
+    public void MoveContentsUpOneLevelStrict(string tempDir)
+    {
+        if (!System.IO.Directory.Exists(tempDir))
+            throw new DirectoryNotFoundException($"The directory '{tempDir}' does not exist.");
+
+        var rootFiles = System.IO.Directory.GetFiles(tempDir);
+        if (rootFiles.Length > 0)
+            throw new InvalidOperationException("Top-level directory contains files. Expected only one subdirectory.");
+
+        var rootDirs = System.IO.Directory.GetDirectories(tempDir);
+        if (rootDirs.Length != 1)
+            throw new InvalidOperationException($"Expected exactly one subdirectory in temp dir, found {rootDirs.Length}.");
+
+        var innerDir = rootDirs[0];
+        _logger.LogInformation("Moving contents from inner directory '{inner}' up to '{temp}'", innerDir, tempDir);
+
+        foreach (var dir in System.IO.Directory.GetDirectories(innerDir))
+        {
+            var destDir = System.IO.Path.Combine(tempDir, System.IO.Path.GetFileName(dir));
+
+            if (System.IO.Directory.Exists(destDir))
+                throw new IOException($"Destination directory already exists: {destDir}");
+
+            System.IO.Directory.Move(dir, destDir);
+            _logger.LogDebug("Moved directory: {src} -> {dest}", dir, destDir);
+        }
+
+        foreach (var file in System.IO.Directory.GetFiles(innerDir))
+        {
+            var destFile = System.IO.Path.Combine(tempDir, System.IO.Path.GetFileName(file));
+
+            if (File.Exists(destFile))
+                throw new IOException($"Destination file already exists: {destFile}");
+
+            File.Move(file, destFile);
+            _logger.LogDebug("Moved file: {src} -> {dest}", file, destFile);
+        }
+
+        System.IO.Directory.Delete(innerDir, recursive: true);
+        _logger.LogInformation("Inner directory '{inner}' deleted after move", innerDir);
     }
 }

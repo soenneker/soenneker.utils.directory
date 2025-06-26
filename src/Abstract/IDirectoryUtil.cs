@@ -91,4 +91,6 @@ public interface IDirectoryUtil
     ValueTask CopyDirectory(string sourceDir, string destDir, bool overwrite = true, CancellationToken cancellationToken = default);
 
     void LogContentsRecursively(string path, int indentLevel = 0);
+
+    void MoveContentsUpOneLevelStrict(string tempDir);
 }

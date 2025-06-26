@@ -89,4 +89,6 @@ public interface IDirectoryUtil
     /// Asynchronously copies the contents of one directory to another.
     /// </summary>
     ValueTask CopyDirectory(string sourceDir, string destDir, bool overwrite = true, CancellationToken cancellationToken = default);
+
+    void LogContentsRecursively(string path, int indentLevel = 0);
 }

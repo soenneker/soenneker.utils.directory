@@ -91,8 +91,7 @@ public sealed class DirectoryUtil : IDirectoryUtil
     {
         var directories = System.IO.Directory.GetDirectories(basePath, "*", SearchOption.AllDirectories);
 
-        var orderedDirectories = directories
-            .OrderBy(dir => dir.Split(System.IO.Path.DirectorySeparatorChar).Length);
+        var orderedDirectories = directories.OrderBy(dir => dir.Split(System.IO.Path.DirectorySeparatorChar).Length);
 
         return orderedDirectories.ToList();
     }
@@ -122,15 +121,14 @@ public sealed class DirectoryUtil : IDirectoryUtil
         if (!System.IO.Directory.Exists(directory))
             return 0;
 
-        return System.IO.Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories)
-            .Sum(file => new FileInfo(file).Length);
+        return System.IO.Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories).Sum(file => new FileInfo(file).Length);
     }
 
     public List<string> GetEmptyDirectories(string root)
     {
         return System.IO.Directory.EnumerateDirectories(root, "*", SearchOption.AllDirectories)
-            .Where(d => !System.IO.Directory.EnumerateFileSystemEntries(d).Any())
-            .ToList();
+                     .Where(d => !System.IO.Directory.EnumerateFileSystemEntries(d).Any())
+                     .ToList();
     }
 
     public void DeleteEmptyDirectories(string root)
@@ -145,15 +143,15 @@ public sealed class DirectoryUtil : IDirectoryUtil
     public List<string> GetDirectoriesContainingFile(string root, string fileName)
     {
         return System.IO.Directory.EnumerateDirectories(root, "*", SearchOption.AllDirectories)
-            .Where(d => File.Exists(System.IO.Path.Combine(d, fileName)))
-            .ToList();
+                     .Where(d => File.Exists(System.IO.Path.Combine(d, fileName)))
+                     .ToList();
     }
 
     public List<string> GetFilesByExtension(string directory, string extension, bool recursive = false)
     {
         return System.IO.Directory.EnumerateFiles(directory, $"*.{extension.TrimStart('.')}",
-                recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly)
-            .ToList();
+                         recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly)
+                     .ToList();
     }
 
     public async ValueTask CopyDirectory(string sourceDir, string destDir, bool overwrite = true, CancellationToken cancellationToken = default)
@@ -186,5 +184,44 @@ public sealed class DirectoryUtil : IDirectoryUtil
     public static string Normalize(string directory)
     {
         return System.IO.Path.GetFullPath(new Uri(directory).LocalPath).TrimEnd(System.IO.Path.DirectorySeparatorChar);
+    }
+
+    public void LogContentsRecursively(string path, int indentLevel = 0)
+    {
+        if (!System.IO.Directory.Exists(path))
+        {
+            _logger.LogWarning("Directory does not exist: {Path}", path);
+            return;
+        }
+
+        try
+        {
+            string indent = new string(' ', indentLevel * 2);
+
+            // Log current directory
+            _logger.LogInformation("{Indent}📁 {Directory}", indent, System.IO.Path.GetFileName(path));
+
+            // Log files in the directory
+            var files = System.IO.Directory.GetFiles(path);
+            foreach (var file in files)
+            {
+                _logger.LogInformation("{Indent}  📄 {File}", indent, System.IO.Path.GetFileName(file));
+            }
+
+            // Recurse into subdirectories
+            var subdirectories = System.IO.Directory.GetDirectories(path);
+            foreach (var subdir in subdirectories)
+            {
+                LogContentsRecursively(subdir, indentLevel + 1);
+            }
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            _logger.LogWarning(ex, "Access denied to {Path}", path);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error reading directory {Path}", path);
+        }
     }
 }

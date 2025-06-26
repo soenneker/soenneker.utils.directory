@@ -9,6 +9,8 @@ using System.Diagnostics.Contracts;
 using Soenneker.Utils.Path.Abstract;
 using System.Threading.Tasks;
 using System.Threading;
+using Soenneker.Extensions.Task;
+using Soenneker.Extensions.ValueTask;
 
 namespace Soenneker.Utils.Directory;
 
@@ -116,14 +118,6 @@ public sealed class DirectoryUtil : IDirectoryUtil
         return System.IO.Directory.Exists(directory);
     }
 
-    public long GetSizeInBytes(string directory)
-    {
-        if (!System.IO.Directory.Exists(directory))
-            return 0;
-
-        return System.IO.Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories).Sum(file => new FileInfo(file).Length);
-    }
-
     public List<string> GetEmptyDirectories(string root)
     {
         return System.IO.Directory.EnumerateDirectories(root, "*", SearchOption.AllDirectories)
@@ -177,7 +171,7 @@ public sealed class DirectoryUtil : IDirectoryUtil
             cancellationToken.ThrowIfCancellationRequested();
 
             var destSubdir = System.IO.Path.Combine(destDir, System.IO.Path.GetFileName(subdir));
-            await CopyDirectory(subdir, destSubdir, overwrite, cancellationToken);
+            await CopyDirectory(subdir, destSubdir, overwrite, cancellationToken).NoSync();
         }
     }
 
@@ -223,6 +217,69 @@ public sealed class DirectoryUtil : IDirectoryUtil
         {
             _logger.LogError(ex, "Error reading directory {Path}", path);
         }
+    }
+
+    public async ValueTask<long> GetSizeInBytes(string directory, GetSizeOptions? options = null, CancellationToken cancellationToken = default)
+    {
+        if (!System.IO.Directory.Exists(directory))
+        {
+            return 0;
+        }
+
+        // Offload the entire synchronous-by-nature file I/O to a background thread
+        // to keep the calling thread (e.g., UI thread) from blocking.
+        return await Task.Run(() =>
+        {
+            var opts = options ?? new GetSizeOptions();
+            long totalSize = 0;
+
+            var rootDirectoryInfo = new DirectoryInfo(directory);
+            var directoriesToScan = new Stack<DirectoryInfo>();
+            directoriesToScan.Push(rootDirectoryInfo);
+
+            while (directoriesToScan.Count > 0)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var currentDir = directoriesToScan.Pop();
+
+                try
+                {
+                    foreach (var file in currentDir.EnumerateFiles())
+                    {
+                        totalSize += file.Length;
+                    }
+
+                    opts.Progress?.Report(totalSize);
+
+                    if (opts.Recursive)
+                    {
+                        foreach (var subDir in currentDir.EnumerateDirectories())
+                        {
+                            directoriesToScan.Push(subDir);
+                        }
+                    }
+                }
+                catch (UnauthorizedAccessException ex)
+                {
+                    _logger.LogWarning(ex, "Access denied to directory {DirectoryPath}, skipping.", currentDir.FullName);
+                    if (!opts.ContinueOnError)
+                    {
+                        throw;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "An error occurred while scanning directory {DirectoryPath}, skipping.", currentDir.FullName);
+                    if (!opts.ContinueOnError)
+                    {
+                        throw;
+                    }
+                }
+            }
+
+            return totalSize;
+        }, cancellationToken).NoSync();
     }
 
     public void MoveContentsUpOneLevelStrict(string tempDir)

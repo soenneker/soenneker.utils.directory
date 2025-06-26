@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -61,11 +62,6 @@ public interface IDirectoryUtil
     bool Exists(string directory);
 
     /// <summary>
-    /// Gets the total size in bytes of all files in the directory (recursively).
-    /// </summary>
-    long GetSizeInBytes(string directory);
-
-    /// <summary>
     /// Retrieves all empty subdirectories within the specified root directory.
     /// </summary>
     List<string> GetEmptyDirectories(string root);
@@ -93,4 +89,22 @@ public interface IDirectoryUtil
     void LogContentsRecursively(string path, int indentLevel = 0);
 
     void MoveContentsUpOneLevelStrict(string tempDir);
+
+    /// <summary>
+    /// Asynchronously calculates the total size in bytes of all files within a specified directory.
+    /// This method is optimized for performance, supports cancellation, progress reporting, and robust error handling.
+    /// </summary>
+    /// <remarks>
+    /// This method uses a non-recursive, stack-based approach to traverse directories, preventing stack overflow exceptions.
+    /// Since file system enumeration is inherently synchronous, this method uses <see cref="Task.Run(Action, CancellationToken)"/> to offload the
+    /// entire operation to a thread pool thread, ensuring the calling thread (e.g., the UI thread) remains responsive.
+    /// Progress updates and cancellation are checked periodically during the scan.
+    /// </remarks>
+    /// <param name="directory">The absolute or relative path to the directory.</param>
+    /// <param name="options">Optional configuration for the calculation, such as recursion, error handling, and progress reporting.</param>
+    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
+    /// <returns>A <see cref="ValueTask{TResult}"/> representing the asynchronous operation, which returns the total size of the directory in bytes. Returns 0 if the directory does not exist.</returns>
+    /// <exception cref="OperationCanceledException">Thrown if the operation is canceled via the <paramref name="cancellationToken"/>.</exception>
+    /// <exception cref="UnauthorizedAccessException">Thrown if <see cref="GetSizeOptions.ContinueOnError"/> is false and a subdirectory cannot be accessed.</exception>
+    ValueTask<long> GetSizeInBytes(string directory, GetSizeOptions? options = null, CancellationToken cancellationToken = default);
 }

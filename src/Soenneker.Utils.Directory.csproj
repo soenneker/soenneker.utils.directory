@@ -41,6 +41,6 @@
         <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.1" />
         <PackageReference Include="Soenneker.Extensions.Task" Version="4.0.108" />
         <PackageReference Include="Soenneker.Extensions.ValueTask" Version="4.0.101" />
-        <PackageReference Include="Soenneker.Utils.Path" Version="4.0.1059" />
+        <PackageReference Include="Soenneker.Utils.Path" Version="4.0.1060" />
     </ItemGroup>
 </Project>

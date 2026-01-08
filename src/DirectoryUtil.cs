@@ -26,7 +26,6 @@ public sealed class DirectoryUtil : IDirectoryUtil
     // Cache common indents to avoid new string(' ', n) per node in LogContentsRecursively
     private static readonly ConcurrentDictionary<int, string> _indentCache = new();
 
-    // If you want to reduce logger overhead further, swap to [LoggerMessage] partial methods.
     public DirectoryUtil(IPathUtil pathUtil, ILogger<DirectoryUtil> logger)
     {
         _pathUtil = pathUtil;
@@ -36,8 +35,8 @@ public sealed class DirectoryUtil : IDirectoryUtil
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public List<string> GetAllDirectories(string directory)
     {
-        // Avoid LINQ iterator overhead + ToList() overhead
         var list = new List<string>();
+
         foreach (var d in System.IO.Directory.EnumerateDirectories(directory))
             list.Add(d);
 

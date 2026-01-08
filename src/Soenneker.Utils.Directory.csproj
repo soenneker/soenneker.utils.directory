@@ -53,6 +53,6 @@
         <PackageReference Include="Soenneker.Extensions.Task" Version="4.0.111" />
         <PackageReference Include="Soenneker.Extensions.ValueTask" Version="4.0.103" />
         <PackageReference Include="Soenneker.Utils.ExecutionContexts" Version="4.0.2" />
-        <PackageReference Include="Soenneker.Utils.Path" Version="4.0.1070" />
+        <PackageReference Include="Soenneker.Utils.Path" Version="4.0.1071" />
     </ItemGroup>
 </Project>

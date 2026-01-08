@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Soenneker.Utils.Directory.Utils;
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -86,9 +87,9 @@ public interface IDirectoryUtil
     /// </summary>
     ValueTask CopyDirectory(string sourceDir, string destDir, bool overwrite = true, CancellationToken cancellationToken = default);
 
-    void LogContentsRecursively(string path, int indentLevel = 0);
+    ValueTask LogContentsRecursively(string path, int indentLevel = 0, CancellationToken cancellationToken = default);
 
-    void MoveContentsUpOneLevelStrict(string tempDir);
+    ValueTask MoveContentsUpOneLevelStrict(string tempDir, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Asynchronously calculates the total size in bytes of all files within a specified directory.

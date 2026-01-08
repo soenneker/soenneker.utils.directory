@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace Soenneker.Utils.Directory;
+namespace Soenneker.Utils.Directory.Utils;
 
 public record GetSizeOptions
 {

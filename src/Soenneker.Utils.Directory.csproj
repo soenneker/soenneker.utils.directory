@@ -15,7 +15,7 @@
         <Version Condition="'$(BUILD_VERSION)' != ''">$(BUILD_VERSION)</Version>
         <AssemblyName>Soenneker.Utils.Directory</AssemblyName>
         <PackageId>Soenneker.Utils.Directory</PackageId>
-        <PackageTags>directory utils c# .net dotnet</PackageTags>
+        <PackageTags>directory utils c# .net dotnet directoryutil idirectoryutil directories</PackageTags>
         <Copyright>Copyright © 2023-2026 Jake Soenneker</Copyright>
         <Authors>Jake Soenneker</Authors>
         <Company>https://soenneker.com</Company>

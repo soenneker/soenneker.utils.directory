@@ -33,60 +33,82 @@ public sealed class DirectoryUtil : IDirectoryUtil
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public List<string> GetAllDirectories(string directory)
-    {
-        var list = new List<string>();
+    public ValueTask<List<string>> GetAllDirectories(string directory, CancellationToken cancellationToken = default) =>
+        ExecutionContextUtil.RunInlineOrOffload(static s =>
+        {
+            (string dir, CancellationToken token) = ((string Directory, CancellationToken Token))s!;
+            var list = new List<string>();
 
-        foreach (var d in System.IO.Directory.EnumerateDirectories(directory))
-            list.Add(d);
+            foreach (var d in System.IO.Directory.EnumerateDirectories(dir))
+            {
+                token.ThrowIfCancellationRequested();
+                list.Add(d);
+            }
 
-        return list;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public IEnumerable<string> GetAllAsEnumerable(string directory) =>
-        System.IO.Directory.EnumerateDirectories(directory);
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public List<string> GetAllDirectoriesRecursively(string directory)
-    {
-        var list = new List<string>();
-        foreach (var d in System.IO.Directory.EnumerateDirectories(directory, "*", SearchOption.AllDirectories))
-            list.Add(d);
-
-        return list;
-    }
+            return list;
+        }, (directory, cancellationToken), cancellationToken);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public IEnumerable<string> GetAllRecursivelyAsEnumerable(string directory) =>
-        System.IO.Directory.EnumerateDirectories(directory, "*", SearchOption.AllDirectories);
+    public ValueTask<List<string>> GetAllAsEnumerable(string directory, CancellationToken cancellationToken = default) =>
+        GetAllDirectories(directory, cancellationToken);
 
-    public void Delete(string directory)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public ValueTask<List<string>> GetAllDirectoriesRecursively(string directory, CancellationToken cancellationToken = default) =>
+        ExecutionContextUtil.RunInlineOrOffload(static s =>
+        {
+            (string dir, CancellationToken token) = ((string Directory, CancellationToken Token))s!;
+            var list = new List<string>();
+            foreach (var d in System.IO.Directory.EnumerateDirectories(dir, "*", SearchOption.AllDirectories))
+            {
+                token.ThrowIfCancellationRequested();
+                list.Add(d);
+            }
+
+            return list;
+        }, (directory, cancellationToken), cancellationToken);
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public ValueTask<List<string>> GetAllRecursivelyAsEnumerable(string directory, CancellationToken cancellationToken = default) =>
+        GetAllDirectoriesRecursively(directory, cancellationToken);
+
+    public ValueTask Delete(string directory, CancellationToken cancellationToken = default)
     {
         _logger.LogDebug("Deleting directory ({dir}) ...", directory);
-        System.IO.Directory.Delete(directory, recursive: true);
+        return ExecutionContextUtil.RunInlineOrOffload(static s =>
+        {
+            System.IO.Directory.Delete((string)s!, recursive: true);
+        }, directory, cancellationToken);
     }
 
-    public void DeleteIfExists(string directory)
+    public ValueTask DeleteIfExists(string directory, CancellationToken cancellationToken = default)
     {
         _logger.LogDebug("Deleting directory ({dir}) if it exists...", directory);
 
-        // Exists check still required to avoid exception cost
-        if (System.IO.Directory.Exists(directory))
-            System.IO.Directory.Delete(directory, recursive: true);
+        return ExecutionContextUtil.RunInlineOrOffload(static s =>
+        {
+            var dir = (string)s!;
+            // Exists check still required to avoid exception cost
+            if (System.IO.Directory.Exists(dir))
+                System.IO.Directory.Delete(dir, recursive: true);
+        }, directory, cancellationToken);
     }
 
-    public bool CreateIfDoesNotExist(string directory, bool log = true)
+    public ValueTask<bool> CreateIfDoesNotExist(string directory, bool log = true, CancellationToken cancellationToken = default)
     {
         if (log)
             _logger.LogDebug("Creating directory ({dir}) if it doesn't exist...", directory);
 
-        // Note: CreateDirectory is idempotent; but if you truly need "created vs existed", keep Exists().
-        if (System.IO.Directory.Exists(directory))
-            return false;
+        return ExecutionContextUtil.RunInlineOrOffload(static s =>
+        {
+            var dir = (string)s!;
 
-        System.IO.Directory.CreateDirectory(directory);
-        return true;
+            // Note: CreateDirectory is idempotent; but if you truly need "created vs existed", keep Exists().
+            if (System.IO.Directory.Exists(dir))
+                return false;
+
+            System.IO.Directory.CreateDirectory(dir);
+            return true;
+        }, directory, cancellationToken);
     }
 
     public string GetWorkingDirectory(bool log = false)
@@ -154,74 +176,111 @@ public sealed class DirectoryUtil : IDirectoryUtil
         _pathUtil.GetUniqueTempDirectory(null, true, cancellationToken);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool Exists(string directory) => System.IO.Directory.Exists(directory);
+    public ValueTask<bool> Exists(string directory, CancellationToken cancellationToken = default) =>
+        ExecutionContextUtil.RunInlineOrOffload(static s => System.IO.Directory.Exists((string)s!), directory, cancellationToken);
 
-    public List<string> GetEmptyDirectories(string root)
-    {
-        var result = new List<string>();
-
-        foreach (var d in System.IO.Directory.EnumerateDirectories(root, "*", SearchOption.AllDirectories))
+    public ValueTask<List<string>> GetEmptyDirectories(string root, CancellationToken cancellationToken = default) =>
+        ExecutionContextUtil.RunInlineOrOffload(static s =>
         {
-            // Fast "Any()" without LINQ: just probe enumerator once.
-            using var e = System.IO.Directory.EnumerateFileSystemEntries(d)
-                                .GetEnumerator();
-            if (!e.MoveNext())
-                result.Add(d);
-        }
+            (string Root, CancellationToken Token) = ((string Root, CancellationToken Token))s!;
+            var result = new List<string>();
 
-        return result;
-    }
+            foreach (var d in System.IO.Directory.EnumerateDirectories(Root, "*", SearchOption.AllDirectories))
+            {
+                Token.ThrowIfCancellationRequested();
+                // Fast "Any()" without LINQ: just probe enumerator once.
+                using var e = System.IO.Directory.EnumerateFileSystemEntries(d)
+                                    .GetEnumerator();
+                if (!e.MoveNext())
+                    result.Add(d);
+            }
 
-    public void DeleteEmptyDirectories(string root)
-    {
-        // If you want to delete deepest-first to avoid missing newly-empty parents,
-        // you can sort by depth descending. Keeping your current behavior.
-        var empties = GetEmptyDirectories(root);
+            return result;
+        }, (root, cancellationToken), cancellationToken);
 
-        for (var i = 0; i < empties.Count; i++)
+    public ValueTask DeleteEmptyDirectories(string root, CancellationToken cancellationToken = default) =>
+        ExecutionContextUtil.RunInlineOrOffload(static s =>
         {
-            var dir = empties[i];
-            _logger.LogDebug("Deleting empty directory: {dir}", dir);
-            System.IO.Directory.Delete(dir);
-        }
-    }
+            (string Root, CancellationToken Token, ILogger<DirectoryUtil> Logger) =
+                ((string Root, CancellationToken Token, ILogger<DirectoryUtil> Logger))s!;
 
-    public List<string> GetDirectoriesContainingFile(string root, string fileName)
+            // If you want to delete deepest-first to avoid missing newly-empty parents,
+            // you can sort by depth descending. Keeping your current behavior.
+            foreach (var d in System.IO.Directory.EnumerateDirectories(Root, "*", SearchOption.AllDirectories))
+            {
+                Token.ThrowIfCancellationRequested();
+
+                using var e = System.IO.Directory.EnumerateFileSystemEntries(d)
+                                    .GetEnumerator();
+                if (!e.MoveNext())
+                {
+                    Logger.LogDebug("Deleting empty directory: {dir}", d);
+                    System.IO.Directory.Delete(d);
+                }
+            }
+        }, (root, cancellationToken, _logger), cancellationToken);
+
+    public ValueTask<List<string>> GetDirectoriesContainingFile(string root, string fileName, CancellationToken cancellationToken = default)
     {
-        var result = new List<string>();
         // Avoid extra work if fileName is empty
         if (string.IsNullOrEmpty(fileName))
+            return ValueTask.FromResult(new List<string>());
+
+        return ExecutionContextUtil.RunInlineOrOffload(static s =>
+        {
+            (string Root, string FileName, CancellationToken Token) = ((string Root, string FileName, CancellationToken Token))s!;
+            var result = new List<string>();
+
+            foreach (var d in System.IO.Directory.EnumerateDirectories(Root, "*", SearchOption.AllDirectories))
+            {
+                Token.ThrowIfCancellationRequested();
+                // Combine alloc is unavoidable; File.Exists is the real cost anyway.
+                if (File.Exists(System.IO.Path.Combine(d, FileName)))
+                    result.Add(d);
+            }
+
             return result;
-
-        foreach (var d in System.IO.Directory.EnumerateDirectories(root, "*", SearchOption.AllDirectories))
-        {
-            // Combine alloc is unavoidable; File.Exists is the real cost anyway.
-            if (File.Exists(System.IO.Path.Combine(d, fileName)))
-                result.Add(d);
-        }
-
-        return result;
+        }, (root, fileName, cancellationToken), cancellationToken);
     }
 
-    public List<string> GetFilesByExtension(string directory, string extension, bool recursive = false)
-    {
-        // Avoid string interpolation + repeated TrimStart work
-        var ext = extension;
-        if (ext.Length > 0 && ext[0] == '.')
-            ext = ext.Substring(1);
-
-        var pattern = ext.Length == 0 ? "*" : "*." + ext;
-
-        var result = new List<string>();
-
-        foreach (var f in System.IO.Directory.EnumerateFiles(directory, pattern, recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly))
+    public ValueTask<List<string>> GetFilesByExtension(string directory, string extension, bool recursive = false, CancellationToken cancellationToken = default) =>
+        ExecutionContextUtil.RunInlineOrOffload(static s =>
         {
-            result.Add(f);
-        }
+            (string Directory, string Extension, bool Recursive, CancellationToken Token) = ((string Directory, string Extension, bool Recursive, CancellationToken Token))s!;
 
-        return result;
-    }
+            // Avoid string interpolation + repeated TrimStart work
+            var ext = Extension;
+            if (ext.Length > 0 && ext[0] == '.')
+                ext = ext.Substring(1);
 
+            var pattern = ext.Length == 0 ? "*" : "*." + ext;
+
+            var result = new List<string>();
+
+            foreach (var f in System.IO.Directory.EnumerateFiles(Directory, pattern, Recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly))
+            {
+                Token.ThrowIfCancellationRequested();
+                result.Add(f);
+            }
+
+            return result;
+        }, (directory, extension, recursive, cancellationToken), cancellationToken);
+
+    /// <summary>
+    /// Recursively copies all files and subdirectories from the specified source directory to the specified destination
+    /// directory.
+    /// </summary>
+    /// <remarks>If overwrite is false, existing files in the destination directory with the same name as
+    /// files in the source directory are not replaced. The method copies the entire directory tree, including all
+    /// subdirectories and their contents. The operation is performed asynchronously and can be cancelled via the
+    /// provided cancellation token.</remarks>
+    /// <param name="sourceDir">The path of the directory to copy. Must refer to an existing directory.</param>
+    /// <param name="destDir">The path of the destination directory where the contents will be copied. The directory will be created if it
+    /// does not exist.</param>
+    /// <param name="overwrite">true to overwrite existing files in the destination directory; otherwise, false. The default is true.</param>
+    /// <param name="cancellationToken">A cancellation token that can be used to cancel the copy operation.</param>
+    /// <returns>A ValueTask that represents the asynchronous copy operation.</returns>
+    /// <exception cref="DirectoryNotFoundException">Thrown if sourceDir does not exist.</exception>
     public async ValueTask CopyDirectory(string sourceDir, string destDir, bool overwrite = true, CancellationToken cancellationToken = default)
     {
         if (!System.IO.Directory.Exists(sourceDir))
@@ -277,6 +336,36 @@ public sealed class DirectoryUtil : IDirectoryUtil
         }
     }
 
+    /// <summary>
+    /// Moves an existing directory to a new location, optionally logging the operation and supporting cancellation.
+    /// </summary>
+    /// <param name="sourceDir">The path of the directory to move. This path must refer to an existing directory.</param>
+    /// <param name="destinationDir">The path to which the directory should be moved. The destination must not already exist.</param>
+    /// <param name="log">true to log the move operation; otherwise, false. The default is true.</param>
+    /// <param name="cancellationToken">A token to monitor for cancellation requests. The default is none.</param>
+    /// <returns>A ValueTask that represents the asynchronous move operation.</returns>
+    public ValueTask Move(string sourceDir, string destinationDir, bool log = true, CancellationToken cancellationToken = default)
+    {
+        if (log)
+            _logger.LogDebug("{name} start from {source} to {dest} ...", nameof(Move), sourceDir, destinationDir);
+
+        return ExecutionContextUtil.RunInlineOrOffload(static s =>
+        {
+            (string Source, string Destination) = ((string Source, string Destination))s!;
+            System.IO.Directory.Move(Source, Destination);
+        }, (sourceDir, destinationDir), cancellationToken);
+    }
+
+    /// <summary>
+    /// Returns a normalized directory path with all trailing directory separators removed, except for root paths.
+    /// </summary>
+    /// <remarks>This method converts the specified path to its absolute form and removes any trailing
+    /// directory or alternate directory separator characters, unless the path represents a root directory. The
+    /// normalization is platform-specific and uses the current operating system's path rules.</remarks>
+    /// <param name="directory">The directory path to normalize. Can be relative or absolute. Cannot be null or an empty string.</param>
+    /// <returns>A normalized absolute directory path with trailing separators removed, except when the path is a root (for
+    /// example, "C:\").</returns>
+    [Pure]
     public static string Normalize(string directory)
     {
         // Avoid Uri allocation; GetFullPath already normalizes.
@@ -354,6 +443,7 @@ public sealed class DirectoryUtil : IDirectoryUtil
         return _indentCache.GetOrAdd(spaces, static s => new string(' ', s));
     }
 
+    [Pure]
     public ValueTask<long> GetSizeInBytes(string directory, GetSizeOptions? options = null, CancellationToken cancellationToken = default)
     {
         if (!System.IO.Directory.Exists(directory))

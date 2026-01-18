@@ -14,38 +14,38 @@ public interface IDirectoryUtil
     /// <summary>
     /// Retrieves all immediate subdirectories in the specified directory.
     /// </summary>
-    List<string> GetAllDirectories(string directory);
+    ValueTask<List<string>> GetAllDirectories(string directory, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Retrieves all immediate subdirectories as an enumerable.
+    /// Retrieves all immediate subdirectories as a list.
     /// </summary>
-    IEnumerable<string> GetAllAsEnumerable(string directory);
+    ValueTask<List<string>> GetAllAsEnumerable(string directory, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Retrieves all subdirectories recursively from the specified directory.
     /// </summary>
-    List<string> GetAllDirectoriesRecursively(string directory);
+    ValueTask<List<string>> GetAllDirectoriesRecursively(string directory, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Retrieves all subdirectories recursively as an enumerable.
+    /// Retrieves all subdirectories recursively as a list.
     /// </summary>
-    IEnumerable<string> GetAllRecursivelyAsEnumerable(string directory);
+    ValueTask<List<string>> GetAllRecursivelyAsEnumerable(string directory, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Deletes the specified directory and all its contents.
     /// </summary>
-    void Delete(string directory);
+    ValueTask Delete(string directory, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Deletes the directory if it exists.
     /// </summary>
-    void DeleteIfExists(string directory);
+    ValueTask DeleteIfExists(string directory, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Creates the directory if it does not exist.
     /// </summary>
     /// <returns>True if the directory was created, false if it already existed.</returns>
-    bool CreateIfDoesNotExist(string directory, bool log = true);
+    ValueTask<bool> CreateIfDoesNotExist(string directory, bool log = true, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets the working directory of the currently executing assembly.
@@ -60,32 +60,37 @@ public interface IDirectoryUtil
     /// <summary>
     /// Checks whether the specified directory exists.
     /// </summary>
-    bool Exists(string directory);
+    ValueTask<bool> Exists(string directory, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Retrieves all empty subdirectories within the specified root directory.
     /// </summary>
-    List<string> GetEmptyDirectories(string root);
+    ValueTask<List<string>> GetEmptyDirectories(string root, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Deletes all empty directories within the specified root directory.
     /// </summary>
-    void DeleteEmptyDirectories(string root);
+    ValueTask DeleteEmptyDirectories(string root, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Finds all subdirectories (recursively) that contain a file with the specified name.
     /// </summary>
-    List<string> GetDirectoriesContainingFile(string root, string fileName);
+    ValueTask<List<string>> GetDirectoriesContainingFile(string root, string fileName, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets all files in the directory that match the given extension.
     /// </summary>
-    List<string> GetFilesByExtension(string directory, string extension, bool recursive = false);
+    ValueTask<List<string>> GetFilesByExtension(string directory, string extension, bool recursive = false, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Asynchronously copies the contents of one directory to another.
     /// </summary>
     ValueTask CopyDirectory(string sourceDir, string destDir, bool overwrite = true, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Moves a directory to a new location.
+    /// </summary>
+    ValueTask Move(string sourceDir, string destinationDir, bool log = true, CancellationToken cancellationToken = default);
 
     ValueTask LogContentsRecursively(string path, int indentLevel = 0, CancellationToken cancellationToken = default);
 

@@ -129,30 +129,33 @@ public sealed class DirectoryUtil : IDirectoryUtil
     /// <remarks>
     /// Avoids Split() allocations by counting separators.
     /// </remarks>
-    [Pure]
-    public static List<string> GetDirectoriesOrderedByLevels(string basePath)
-    {
-        // Directory.GetDirectories returns array; if basePath is huge, you could stream + sort via list.
-        var dirs = System.IO.Directory.GetDirectories(basePath, "*", SearchOption.AllDirectories);
-
-        // Precompute depth once per string to avoid repeated scanning during sort comparisons.
-        var items = new (string Path, int Depth)[dirs.Length];
-        var sep = System.IO.Path.DirectorySeparatorChar;
-
-        for (var i = 0; i < dirs.Length; i++)
+    public static ValueTask<List<string>> GetDirectoriesOrderedByLevels(string basePath, CancellationToken cancellationToken = default) =>
+        ExecutionContextUtil.RunInlineOrOffload(static s =>
         {
-            var p = dirs[i];
-            items[i] = (p, CountChar(p, sep));
-        }
+            (string BasePath, CancellationToken Token) = ((string BasePath, CancellationToken Token))s!;
 
-        Array.Sort(items, static (a, b) => a.Depth.CompareTo(b.Depth));
+            // Directory.GetDirectories returns array; if basePath is huge, you could stream + sort via list.
+            var dirs = System.IO.Directory.GetDirectories(BasePath, "*", SearchOption.AllDirectories);
 
-        var result = new List<string>(items.Length);
-        for (var i = 0; i < items.Length; i++)
-            result.Add(items[i].Path);
+            // Precompute depth once per string to avoid repeated scanning during sort comparisons.
+            var items = new (string Path, int Depth)[dirs.Length];
+            var sep = System.IO.Path.DirectorySeparatorChar;
 
-        return result;
-    }
+            for (var i = 0; i < dirs.Length; i++)
+            {
+                Token.ThrowIfCancellationRequested();
+                var p = dirs[i];
+                items[i] = (p, CountChar(p, sep));
+            }
+
+            Array.Sort(items, static (a, b) => a.Depth.CompareTo(b.Depth));
+
+            var result = new List<string>(items.Length);
+            for (var i = 0; i < items.Length; i++)
+                result.Add(items[i].Path);
+
+            return result;
+        }, (basePath, cancellationToken), cancellationToken);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int CountChar(string s, char c)

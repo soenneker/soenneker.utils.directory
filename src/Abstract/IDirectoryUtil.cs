@@ -1,6 +1,7 @@
 ﻿using Soenneker.Utils.Directory.Utils;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.Contracts;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -14,21 +15,25 @@ public interface IDirectoryUtil
     /// <summary>
     /// Retrieves all immediate subdirectories in the specified directory.
     /// </summary>
+    [Pure]
     ValueTask<List<string>> GetAllDirectories(string directory, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Retrieves all immediate subdirectories as a list.
     /// </summary>
+    [Pure]
     ValueTask<List<string>> GetAllAsEnumerable(string directory, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Retrieves all subdirectories recursively from the specified directory.
     /// </summary>
+    [Pure]
     ValueTask<List<string>> GetAllDirectoriesRecursively(string directory, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Retrieves all subdirectories recursively as a list.
     /// </summary>
+    [Pure]
     ValueTask<List<string>> GetAllRecursivelyAsEnumerable(string directory, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -50,6 +55,7 @@ public interface IDirectoryUtil
     /// <summary>
     /// Gets the working directory of the currently executing assembly.
     /// </summary>
+    [Pure]
     string GetWorkingDirectory(bool log = false);
 
     /// <summary>
@@ -60,11 +66,13 @@ public interface IDirectoryUtil
     /// <summary>
     /// Checks whether the specified directory exists.
     /// </summary>
+    [Pure]
     ValueTask<bool> Exists(string directory, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Retrieves all empty subdirectories within the specified root directory.
     /// </summary>
+    [Pure]
     ValueTask<List<string>> GetEmptyDirectories(string root, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -75,11 +83,13 @@ public interface IDirectoryUtil
     /// <summary>
     /// Finds all subdirectories (recursively) that contain a file with the specified name.
     /// </summary>
+    [Pure]
     ValueTask<List<string>> GetDirectoriesContainingFile(string root, string fileName, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets all files in the directory that match the given extension.
     /// </summary>
+    [Pure]
     ValueTask<List<string>> GetFilesByExtension(string directory, string extension, bool recursive = false, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -112,5 +122,6 @@ public interface IDirectoryUtil
     /// <returns>A <see cref="ValueTask{TResult}"/> representing the asynchronous operation, which returns the total size of the directory in bytes. Returns 0 if the directory does not exist.</returns>
     /// <exception cref="OperationCanceledException">Thrown if the operation is canceled via the <paramref name="cancellationToken"/>.</exception>
     /// <exception cref="UnauthorizedAccessException">Thrown if <see cref="GetSizeOptions.ContinueOnError"/> is false and a subdirectory cannot be accessed.</exception>
+    [Pure]
     ValueTask<long> GetSizeInBytes(string directory, GetSizeOptions? options = null, CancellationToken cancellationToken = default);
 }

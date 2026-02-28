@@ -165,7 +165,7 @@ public sealed class DirectoryUtil : IDirectoryUtil
     /// <param name="cancellationToken">A cancellation token that can be used to cancel the asynchronous operation.</param>
     /// <returns>A task that represents the asynchronous operation. The task result is true if the directory was created;
     /// otherwise, false if it already existed.</returns>
-    public ValueTask<bool> CreateIfDoesNotExist(string directory, bool log = true, CancellationToken cancellationToken = default)
+    public ValueTask<bool> Create(string directory, bool log = true, CancellationToken cancellationToken = default)
     {
         if (log)
             _logger.LogDebug("Creating directory ({dir}) if it doesn't exist...", directory);
@@ -181,6 +181,53 @@ public sealed class DirectoryUtil : IDirectoryUtil
             System.IO.Directory.CreateDirectory(dir);
             return true;
         }, directory, cancellationToken);
+    }
+
+    /// <summary>
+    /// Attempts to create the specified directory.
+    /// </summary>
+    /// <remarks>
+    /// Returns <see langword="true"/> only if the directory did not previously exist.
+    /// </remarks>
+    public ValueTask<bool> TryCreate(string directory, bool log = true, CancellationToken cancellationToken = default)
+    {
+        if (log)
+            _logger.LogDebug("Attempting to create directory ({dir}) ...", directory);
+
+        return ExecutionContextUtil.RunInlineOrOffload(static s =>
+        {
+            var (dir, token) = ((string Dir, CancellationToken Token))s!;
+            token.ThrowIfCancellationRequested();
+
+            if (System.IO.Directory.Exists(dir))
+                return false;
+
+            System.IO.Directory.CreateDirectory(dir);
+            return true;
+        }, (directory, cancellationToken), cancellationToken);
+    }
+
+    /// <summary>
+    /// Creates the specified directory and throws if it already exists.
+    /// </summary>
+    /// <exception cref="IOException">
+    /// Thrown if the directory already exists.
+    /// </exception>
+    public ValueTask CreateStrict(string directory, bool log = true, CancellationToken cancellationToken = default)
+    {
+        if (log)
+            _logger.LogDebug("Creating directory strictly ({dir}) ...", directory);
+
+        return ExecutionContextUtil.RunInlineOrOffload(static s =>
+        {
+            var (dir, token) = ((string Dir, CancellationToken Token))s!;
+            token.ThrowIfCancellationRequested();
+
+            if (System.IO.Directory.Exists(dir))
+                throw new IOException($"Directory already exists: {dir}");
+
+            System.IO.Directory.CreateDirectory(dir);
+        }, (directory, cancellationToken), cancellationToken);
     }
 
     /// <summary>

@@ -50,7 +50,11 @@ public interface IDirectoryUtil
     /// Creates the directory if it does not exist.
     /// </summary>
     /// <returns>True if the directory was created, false if it already existed.</returns>
-    ValueTask<bool> CreateIfDoesNotExist(string directory, bool log = true, CancellationToken cancellationToken = default);
+    ValueTask<bool> Create(string directory, bool log = true, CancellationToken cancellationToken = default);
+
+    ValueTask<bool> TryCreate(string directory, bool log = true, CancellationToken cancellationToken = default);
+
+    ValueTask CreateStrict(string directory, bool log = true, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets the working directory of the currently executing assembly.

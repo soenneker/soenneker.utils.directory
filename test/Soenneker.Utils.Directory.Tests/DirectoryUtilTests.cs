@@ -1,21 +1,20 @@
 using Soenneker.Utils.Directory.Abstract;
-using Soenneker.Tests.FixturedUnit;
-using Xunit;
+using Soenneker.Tests.HostedUnit;
 
 
 namespace Soenneker.Utils.Directory.Tests;
 
-[Collection("Collection")]
-public class DirectoryUtilTests : FixturedUnitTest
+[ClassDataSource<Host>(Shared = SharedType.PerTestSession)]
+public class DirectoryUtilTests : HostedUnitTest
 {
     private readonly IDirectoryUtil _util;
 
-    public DirectoryUtilTests(Fixture fixture, ITestOutputHelper output) : base(fixture, output)
+    public DirectoryUtilTests(Host host) : base(host)
     {
         _util = Resolve<IDirectoryUtil>(true);
     }
 
-    [Fact]
+    [Test]
     public void Default()
     {
 

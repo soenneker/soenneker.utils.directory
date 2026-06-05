@@ -5,6 +5,9 @@ using Soenneker.Utils.Path.Registrars;
 
 namespace Soenneker.Utils.Directory.Registrars;
 
+/// <summary>
+/// Represents the directory util registrar.
+/// </summary>
 public static class DirectoryUtilRegistrar
 {
     /// <summary>

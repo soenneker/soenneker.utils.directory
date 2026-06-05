@@ -2,6 +2,9 @@
 
 namespace Soenneker.Utils.Directory.Utils;
 
+/// <summary>
+/// Represents the get size options record.
+/// </summary>
 public record GetSizeOptions
 {
     /// <summary>

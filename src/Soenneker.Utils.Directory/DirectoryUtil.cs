@@ -33,18 +33,6 @@ public sealed class DirectoryUtil : IDirectoryUtil
         _logger = logger;
     }
 
-    /// <summary>
-    /// Asynchronously retrieves the full paths of all immediate subdirectories within the specified directory.
-    /// </summary>
-    /// <remarks>The method throws an <see cref="OperationCanceledException"/> if the operation is canceled
-    /// via the cancellation token. Only immediate subdirectories are returned; nested subdirectories are not
-    /// included.</remarks>
-    /// <param name="directory">The path of the directory from which to retrieve subdirectory paths. This parameter cannot be null or empty.</param>
-    /// <param name="cancellationToken">A cancellation token that can be used to cancel the operation. The default value is <see
-    /// cref="CancellationToken.None"/>.</param>
-    /// <returns>A task that represents the asynchronous operation. The task result contains a list of strings, each representing
-    /// the full path of a subdirectory found in the specified directory. The list will be empty if no subdirectories
-    /// are found.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ValueTask<List<string>> GetAllDirectories(string directory, CancellationToken cancellationToken = default) =>
         ExecutionContextUtil.RunInlineOrOffload(static s =>
@@ -61,32 +49,10 @@ public sealed class DirectoryUtil : IDirectoryUtil
             return list;
         }, (directory, cancellationToken), cancellationToken);
 
-    /// <summary>
-    /// Asynchronously retrieves a list of all directories within the specified directory.
-    /// </summary>
-    /// <remarks>This method is optimized for performance using aggressive inlining. Ensure that the specified
-    /// directory exists to avoid exceptions or unexpected results.</remarks>
-    /// <param name="directory">The path of the directory from which to retrieve subdirectory names. This parameter cannot be null or empty.</param>
-    /// <param name="cancellationToken">A cancellation token that can be used to cancel the asynchronous operation. The default value is a
-    /// non-cancelable token.</param>
-    /// <returns>A task that represents the asynchronous operation. The task result contains a list of strings representing the
-    /// names of all directories found in the specified directory.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ValueTask<List<string>> GetAllAsEnumerable(string directory, CancellationToken cancellationToken = default) =>
         GetAllDirectories(directory, cancellationToken);
 
-    /// <summary>
-    /// Asynchronously retrieves the full paths of all directories within the specified directory and its
-    /// subdirectories.
-    /// </summary>
-    /// <remarks>The operation is performed recursively, including all nested subdirectories. If the operation
-    /// is canceled via the provided cancellation token, an <see cref="OperationCanceledException"/> is
-    /// thrown.</remarks>
-    /// <param name="directory">The path of the root directory to search. This parameter cannot be null or empty.</param>
-    /// <param name="cancellationToken">A cancellation token that can be used to cancel the operation. The default value is <see
-    /// cref="CancellationToken.None"/>.</param>
-    /// <returns>A task that represents the asynchronous operation. The task result contains a list of strings representing the
-    /// full paths of all directories found. The list will be empty if no directories are found.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ValueTask<List<string>> GetAllDirectoriesRecursively(string directory, CancellationToken cancellationToken = default) =>
         ExecutionContextUtil.RunInlineOrOffload(static s =>
@@ -102,28 +68,10 @@ public sealed class DirectoryUtil : IDirectoryUtil
             return list;
         }, (directory, cancellationToken), cancellationToken);
 
-    /// <summary>
-    /// Asynchronously retrieves a list of all directories within the specified directory and its subdirectories.
-    /// </summary>
-    /// <remarks>This method performs a recursive search for directories. Use the cancellation token to cancel
-    /// the operation if it may run for an extended period, especially on large directory trees.</remarks>
-    /// <param name="directory">The full path of the directory to search. This parameter cannot be null or empty.</param>
-    /// <param name="cancellationToken">A cancellation token that can be used to cancel the operation.</param>
-    /// <returns>A task that represents the asynchronous operation. The task result contains a list of strings representing the
-    /// full paths of all directories found. The list is empty if no directories are found.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ValueTask<List<string>> GetAllRecursivelyAsEnumerable(string directory, CancellationToken cancellationToken = default) =>
         GetAllDirectoriesRecursively(directory, cancellationToken);
 
-    /// <summary>
-    /// Deletes the specified directory and all of its contents asynchronously.
-    /// </summary>
-    /// <remarks>This method deletes the directory recursively, including all files and subdirectories. Ensure
-    /// that the directory is not in use by another process before calling this method.</remarks>
-    /// <param name="directory">The path of the directory to delete. The directory must exist and cannot be null.</param>
-    /// <param name="cancellationToken">A cancellation token that can be used to cancel the delete operation. The default value is <see
-    /// cref="CancellationToken.None"/>.</param>
-    /// <returns>A <see cref="ValueTask"/> that represents the asynchronous operation of deleting the directory.</returns>
     public ValueTask Delete(string directory, CancellationToken cancellationToken = default)
     {
         _logger.LogDebug("Deleting directory ({dir}) ...", directory);
@@ -133,15 +81,6 @@ public sealed class DirectoryUtil : IDirectoryUtil
         }, directory, cancellationToken);
     }
 
-    /// <summary>
-    /// Deletes the specified directory and all its contents if the directory exists.
-    /// </summary>
-    /// <remarks>The deletion attempt is logged at the debug level. If the directory does not exist, the
-    /// method completes without performing any action.</remarks>
-    /// <param name="directory">The path of the directory to delete. Must be a valid directory path. If the directory does not exist, no action
-    /// is taken.</param>
-    /// <param name="cancellationToken">A cancellation token that can be used to cancel the delete operation.</param>
-    /// <returns>A task that represents the asynchronous operation of deleting the directory.</returns>
     public ValueTask DeleteIfExists(string directory, CancellationToken cancellationToken = default)
     {
         _logger.LogDebug("Deleting directory ({dir}) if it exists...", directory);
@@ -155,16 +94,6 @@ public sealed class DirectoryUtil : IDirectoryUtil
         }, directory, cancellationToken);
     }
 
-    /// <summary>
-    /// Creates the specified directory if it does not already exist.
-    /// </summary>
-    /// <remarks>This method is idempotent; calling it multiple times with the same directory path does not
-    /// result in an error. If logging is enabled, a debug message is logged indicating the creation attempt.</remarks>
-    /// <param name="directory">The path of the directory to create. Cannot be null or empty.</param>
-    /// <param name="log">true to log the creation attempt; otherwise, false. The default is true.</param>
-    /// <param name="cancellationToken">A cancellation token that can be used to cancel the asynchronous operation.</param>
-    /// <returns>A task that represents the asynchronous operation. The task result is true if the directory was created;
-    /// otherwise, false if it already existed.</returns>
     public ValueTask<bool> Create(string directory, bool log = true, CancellationToken cancellationToken = default)
     {
         if (log)
@@ -183,12 +112,6 @@ public sealed class DirectoryUtil : IDirectoryUtil
         }, directory, cancellationToken);
     }
 
-    /// <summary>
-    /// Attempts to create the specified directory.
-    /// </summary>
-    /// <remarks>
-    /// Returns <see langword="true"/> only if the directory did not previously exist.
-    /// </remarks>
     public ValueTask<bool> TryCreate(string directory, bool log = true, CancellationToken cancellationToken = default)
     {
         if (log)
@@ -207,12 +130,6 @@ public sealed class DirectoryUtil : IDirectoryUtil
         }, (directory, cancellationToken), cancellationToken);
     }
 
-    /// <summary>
-    /// Creates the specified directory and throws if it already exists.
-    /// </summary>
-    /// <exception cref="IOException">
-    /// Thrown if the directory already exists.
-    /// </exception>
     public ValueTask CreateStrict(string directory, bool log = true, CancellationToken cancellationToken = default)
     {
         if (log)
@@ -230,14 +147,6 @@ public sealed class DirectoryUtil : IDirectoryUtil
         }, (directory, cancellationToken), cancellationToken);
     }
 
-    /// <summary>
-    /// Gets the directory path of the currently executing assembly.
-    /// </summary>
-    /// <remarks>The assembly location may be empty in certain contexts, such as when running in some test
-    /// environments or with single-file deployments. Logging is optional and can be enabled by setting the log
-    /// parameter to <see langword="true"/>.</remarks>
-    /// <param name="log">true to log the retrieved directory path at the debug level; otherwise, false.</param>
-    /// <returns>A string containing the path to the directory where the executing assembly is located.</returns>
     public string GetWorkingDirectory(bool log = false)
     {
         // Assembly.Location can be empty in some contexts; keeping your behavior.
@@ -292,43 +201,13 @@ public sealed class DirectoryUtil : IDirectoryUtil
         System.IO.Path.Combine(System.IO.Path.GetTempPath(), Guid.NewGuid()
                                                                  .ToString("N"));
 
-    /// <summary>
-    /// Creates a uniquely named temporary directory and returns its path.
-    /// </summary>
-    /// <remarks>The created directory is guaranteed to be unique and suitable for temporary storage. The
-    /// method may throw exceptions if the directory cannot be created or if the operation is canceled.</remarks>
-    /// <param name="cancellationToken">A cancellation token that can be used to cancel the asynchronous operation.</param>
-    /// <returns>A task that represents the asynchronous operation. The task result contains the full path of the created
-    /// temporary directory.</returns>
     public ValueTask<string> CreateTempDirectory(CancellationToken cancellationToken = default) =>
         _pathUtil.GetUniqueTempDirectory(null, true, cancellationToken);
 
-    /// <summary>
-    /// Asynchronously determines whether the specified directory exists on the file system.
-    /// </summary>
-    /// <remarks>This method performs the existence check asynchronously and can be canceled using the
-    /// provided cancellation token.</remarks>
-    /// <param name="directory">The path of the directory to check for existence. This parameter cannot be null or empty.</param>
-    /// <param name="cancellationToken">A cancellation token that can be used to cancel the operation. The default value is <see
-    /// cref="CancellationToken.None"/>.</param>
-    /// <returns>A task that represents the asynchronous operation. The task result contains <see langword="true"/> if the
-    /// directory exists; otherwise, <see langword="false"/>.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ValueTask<bool> Exists(string directory, CancellationToken cancellationToken = default) =>
         ExecutionContextUtil.RunInlineOrOffload(static s => System.IO.Directory.Exists((string)s!), directory, cancellationToken);
 
-    /// <summary>
-    /// Asynchronously retrieves a list of all empty directories within the specified root directory and its
-    /// subdirectories.
-    /// </summary>
-    /// <remarks>The search is performed recursively. A directory is considered empty if it contains no files
-    /// or subdirectories. If the operation is canceled, an <see cref="OperationCanceledException"/> is
-    /// thrown.</remarks>
-    /// <param name="root">The full path to the root directory to search. This parameter cannot be null or an empty string.</param>
-    /// <param name="cancellationToken">A cancellation token that can be used to cancel the operation. The default value is <see
-    /// cref="CancellationToken.None"/>.</param>
-    /// <returns>A task that represents the asynchronous operation. The task result contains a list of strings representing the
-    /// full paths of empty directories found within the root directory.</returns>
     public ValueTask<List<string>> GetEmptyDirectories(string root, CancellationToken cancellationToken = default) =>
         ExecutionContextUtil.RunInlineOrOffload(static s =>
         {
@@ -348,18 +227,6 @@ public sealed class DirectoryUtil : IDirectoryUtil
             return result;
         }, (root, cancellationToken), cancellationToken);
 
-    /// <summary>
-    /// Deletes all empty directories within the specified root directory and its subdirectories.
-    /// </summary>
-    /// <remarks>The method traverses the directory tree starting at the specified root and deletes
-    /// directories that do not contain any files or subdirectories. Deletions are performed in a non-recursive manner
-    /// and are logged for debugging purposes. If a directory is deleted, its parent may become empty and will be
-    /// considered for deletion in subsequent iterations. The operation can be cancelled by providing a cancellation
-    /// token.</remarks>
-    /// <param name="root">The full path to the root directory from which to begin deleting empty directories. This path must exist and be
-    /// accessible.</param>
-    /// <param name="cancellationToken">A cancellation token that can be used to cancel the operation before it completes.</param>
-    /// <returns>A ValueTask that represents the asynchronous operation of deleting empty directories.</returns>
     public ValueTask DeleteEmptyDirectories(string root, CancellationToken cancellationToken = default) =>
         ExecutionContextUtil.RunInlineOrOffload(static s =>
         {
@@ -382,18 +249,6 @@ public sealed class DirectoryUtil : IDirectoryUtil
             }
         }, (root, cancellationToken, _logger), cancellationToken);
 
-    /// <summary>
-    /// Asynchronously retrieves a list of directory paths under the specified root directory that contain a file with
-    /// the given name.
-    /// </summary>
-    /// <remarks>The search includes all subdirectories of the specified root directory. The operation can be
-    /// canceled by passing a cancellation token, in which case an OperationCanceledException is thrown.</remarks>
-    /// <param name="root">The root directory to search. This path must exist and be accessible.</param>
-    /// <param name="fileName">The name of the file to search for within subdirectories. If this parameter is empty, the method returns an
-    /// empty list.</param>
-    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
-    /// <returns>A task that represents the asynchronous operation. The task result contains a list of directory paths that
-    /// contain the specified file. The list is empty if no directories contain the file.</returns>
     public ValueTask<List<string>> GetDirectoriesContainingFile(string root, string fileName, CancellationToken cancellationToken = default)
     {
         // Avoid extra work if fileName is empty
@@ -440,21 +295,6 @@ public sealed class DirectoryUtil : IDirectoryUtil
             return result;
         }, (directory, extension, recursive, cancellationToken), cancellationToken);
 
-    /// <summary>
-    /// Recursively copies all files and subdirectories from the specified source directory to the specified destination
-    /// directory.
-    /// </summary>
-    /// <remarks>If overwrite is false, existing files in the destination directory with the same name as
-    /// files in the source directory are not replaced. The method copies the entire directory tree, including all
-    /// subdirectories and their contents. The operation is performed asynchronously and can be cancelled via the
-    /// provided cancellation token.</remarks>
-    /// <param name="sourceDir">The path of the directory to copy. Must refer to an existing directory.</param>
-    /// <param name="destDir">The path of the destination directory where the contents will be copied. The directory will be created if it
-    /// does not exist.</param>
-    /// <param name="overwrite">true to overwrite existing files in the destination directory; otherwise, false. The default is true.</param>
-    /// <param name="cancellationToken">A cancellation token that can be used to cancel the copy operation.</param>
-    /// <returns>A ValueTask that represents the asynchronous copy operation.</returns>
-    /// <exception cref="DirectoryNotFoundException">Thrown if sourceDir does not exist.</exception>
     public async ValueTask CopyDirectory(string sourceDir, string destDir, bool overwrite = true, CancellationToken cancellationToken = default)
     {
         if (!System.IO.Directory.Exists(sourceDir))
@@ -510,14 +350,6 @@ public sealed class DirectoryUtil : IDirectoryUtil
         }
     }
 
-    /// <summary>
-    /// Moves an existing directory to a new location, optionally logging the operation and supporting cancellation.
-    /// </summary>
-    /// <param name="sourceDir">The path of the directory to move. This path must refer to an existing directory.</param>
-    /// <param name="destinationDir">The path to which the directory should be moved. The destination must not already exist.</param>
-    /// <param name="log">true to log the move operation; otherwise, false. The default is true.</param>
-    /// <param name="cancellationToken">A token to monitor for cancellation requests. The default is none.</param>
-    /// <returns>A ValueTask that represents the asynchronous move operation.</returns>
     public ValueTask Move(string sourceDir, string destinationDir, bool log = true, CancellationToken cancellationToken = default)
     {
         if (log)
@@ -563,16 +395,6 @@ public sealed class DirectoryUtil : IDirectoryUtil
         return len == full.Length ? full : full.Substring(0, len);
     }
 
-    /// <summary>
-    /// Asynchronously logs the contents of the specified directory and all its subdirectories.
-    /// </summary>
-    /// <remarks>This method enables structured logging of directory hierarchies and supports cancellation
-    /// through the provided token.</remarks>
-    /// <param name="path">The full path of the directory to log. This value must not be null or empty.</param>
-    /// <param name="indentLevel">The indentation level to use for formatting the log output. A higher value increases the indentation of logged
-    /// entries.</param>
-    /// <param name="cancellationToken">A cancellation token that can be used to cancel the logging operation.</param>
-    /// <returns>A ValueTask that represents the asynchronous operation of logging the directory contents.</returns>
     public ValueTask LogContentsRecursively(string path, int indentLevel = 0, CancellationToken cancellationToken = default)
     {
         var args = new LogArgs(path, indentLevel, cancellationToken, this);
@@ -627,18 +449,6 @@ public sealed class DirectoryUtil : IDirectoryUtil
         return _indentCache.GetOrAdd(spaces, static s => new string(' ', s));
     }
 
-    /// <summary>
-    /// Calculates the total size, in bytes, of the specified directory and its contents asynchronously.
-    /// </summary>
-    /// <remarks>If the specified directory does not exist, the method returns 0 without performing any
-    /// further calculations. The method may offload the size calculation to a background thread if called from a UI
-    /// context to avoid blocking the UI.</remarks>
-    /// <param name="directory">The path to the directory for which the size is to be calculated. Must be a valid directory path.</param>
-    /// <param name="options">Optional settings that influence the size calculation, such as whether to include subdirectories or hidden
-    /// files.</param>
-    /// <param name="cancellationToken">A cancellation token that can be used to cancel the operation.</param>
-    /// <returns>A task that represents the asynchronous operation. The task result contains the total size, in bytes, of the
-    /// directory and its contents. Returns 0 if the directory does not exist.</returns>
     [Pure]
     public ValueTask<long> GetSizeInBytes(string directory, GetSizeOptions? options = null, CancellationToken cancellationToken = default)
     {
@@ -702,17 +512,6 @@ public sealed class DirectoryUtil : IDirectoryUtil
         return totalSize;
     }
 
-    /// <summary>
-    /// Moves all contents of the specified directory up one level in the directory hierarchy, replacing the parent
-    /// directory's contents with those from the given directory.
-    /// </summary>
-    /// <remarks>This method executes asynchronously and may offload the operation to a background context for
-    /// improved performance. Monitor the provided cancellation token to handle cancellation requests appropriately. The
-    /// method is strict and may fail if the operation cannot be completed as intended.</remarks>
-    /// <param name="tempDir">The path to the directory whose contents will be moved up one level. This path must refer to an existing
-    /// directory.</param>
-    /// <param name="cancellationToken">A token that can be used to cancel the move operation.</param>
-    /// <returns>A ValueTask that represents the asynchronous operation of moving the directory contents.</returns>
     public ValueTask MoveContentsUpOneLevelStrict(string tempDir, CancellationToken cancellationToken = default)
     {
         var args = new MoveArgs(tempDir, cancellationToken, this);

@@ -52,8 +52,20 @@ public interface IDirectoryUtil
     /// <returns>True if the directory was created, false if it already existed.</returns>
     ValueTask<bool> Create(string directory, bool log = true, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Attempts to create the specified directory.
+    /// </summary>
+    /// <remarks>
+    /// Returns <see langword="true"/> only if the directory did not previously exist.
+    /// </remarks>
     ValueTask<bool> TryCreate(string directory, bool log = true, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Creates the specified directory and throws if it already exists.
+    /// </summary>
+    /// <exception cref="IOException">
+    /// Thrown if the directory already exists.
+    /// </exception>
     ValueTask CreateStrict(string directory, bool log = true, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -106,8 +118,29 @@ public interface IDirectoryUtil
     /// </summary>
     ValueTask Move(string sourceDir, string destinationDir, bool log = true, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Asynchronously logs the contents of the specified directory and all its subdirectories.
+    /// </summary>
+    /// <remarks>This method enables structured logging of directory hierarchies and supports cancellation
+    /// through the provided token.</remarks>
+    /// <param name="path">The full path of the directory to log. This value must not be null or empty.</param>
+    /// <param name="indentLevel">The indentation level to use for formatting the log output. A higher value increases the indentation of logged
+    /// entries.</param>
+    /// <param name="cancellationToken">A cancellation token that can be used to cancel the logging operation.</param>
+    /// <returns>A ValueTask that represents the asynchronous operation of logging the directory contents.</returns>
     ValueTask LogContentsRecursively(string path, int indentLevel = 0, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Moves all contents of the specified directory up one level in the directory hierarchy, replacing the parent
+    /// directory's contents with those from the given directory.
+    /// </summary>
+    /// <remarks>This method executes asynchronously and may offload the operation to a background context for
+    /// improved performance. Monitor the provided cancellation token to handle cancellation requests appropriately. The
+    /// method is strict and may fail if the operation cannot be completed as intended.</remarks>
+    /// <param name="tempDir">The path to the directory whose contents will be moved up one level. This path must refer to an existing
+    /// directory.</param>
+    /// <param name="cancellationToken">A token that can be used to cancel the move operation.</param>
+    /// <returns>A ValueTask that represents the asynchronous operation of moving the directory contents.</returns>
     ValueTask MoveContentsUpOneLevelStrict(string tempDir, CancellationToken cancellationToken = default);
 
     /// <summary>

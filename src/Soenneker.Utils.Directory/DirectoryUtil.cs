@@ -300,53 +300,48 @@ public sealed class DirectoryUtil : IDirectoryUtil
         if (!System.IO.Directory.Exists(sourceDir))
             throw new DirectoryNotFoundException($"Source directory not found: {sourceDir}");
 
-        System.IO.Directory.CreateDirectory(destDir);
+        var srcOpts = new FileStreamOptions
+        {
+            Mode = FileMode.Open,
+            Access = FileAccess.Read,
+            Share = FileShare.Read,
+            Options = FileOptions.Asynchronous | FileOptions.SequentialScan,
+            BufferSize = 128 * 1024
+        };
 
-        // Stream enumeration (no arrays)
-        foreach (var file in System.IO.Directory.EnumerateFiles(sourceDir))
+        var dstOpts = new FileStreamOptions
+        {
+            Mode = overwrite ? FileMode.Create : FileMode.CreateNew,
+            Access = FileAccess.Write,
+            Share = FileShare.None,
+            Options = FileOptions.Asynchronous | FileOptions.SequentialScan,
+            BufferSize = 128 * 1024
+        };
+
+        var pending = new Stack<(string Source, string Destination)>();
+        pending.Push((sourceDir, destDir));
+
+        while (pending.TryPop(out (string Source, string Destination) current))
         {
             cancellationToken.ThrowIfCancellationRequested();
+            System.IO.Directory.CreateDirectory(current.Destination);
 
-            var destFile = System.IO.Path.Combine(destDir, System.IO.Path.GetFileName(file));
-
-            // If overwrite==false and file exists, skip/throw? Keeping overwrite semantics:
-            if (!overwrite && File.Exists(destFile))
-                continue;
-
-            // File.Copy is typically faster than managed stream copy, but not cancellable mid-copy.
-            // Since you accept CancellationToken, keep async streams (but tuned).
-            var srcOpts = new FileStreamOptions
+            foreach (string file in System.IO.Directory.EnumerateFiles(current.Source))
             {
-                Mode = FileMode.Open,
-                Access = FileAccess.Read,
-                Share = FileShare.Read,
-                Options = FileOptions.Asynchronous | FileOptions.SequentialScan,
-                BufferSize = 128 * 1024
-            };
+                cancellationToken.ThrowIfCancellationRequested();
+                string destFile = System.IO.Path.Combine(current.Destination, System.IO.Path.GetFileName(file));
 
-            var dstOpts = new FileStreamOptions
-            {
-                Mode = overwrite ? FileMode.Create : FileMode.CreateNew,
-                Access = FileAccess.Write,
-                Share = FileShare.None,
-                Options = FileOptions.Asynchronous | FileOptions.SequentialScan,
-                BufferSize = 128 * 1024
-            };
+                if (!overwrite && File.Exists(destFile))
+                    continue;
 
-            await using var sourceStream = new FileStream(file, srcOpts);
-            await using var destinationStream = new FileStream(destFile, dstOpts);
+                await using var sourceStream = new FileStream(file, srcOpts);
+                await using var destinationStream = new FileStream(destFile, dstOpts);
 
-            await sourceStream.CopyToAsync(destinationStream, 128 * 1024, cancellationToken)
-                              .NoSync();
-        }
+                await sourceStream.CopyToAsync(destinationStream, 128 * 1024, cancellationToken).NoSync();
+            }
 
-        foreach (var subdir in System.IO.Directory.EnumerateDirectories(sourceDir))
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            var destSubdir = System.IO.Path.Combine(destDir, System.IO.Path.GetFileName(subdir));
-            await CopyDirectory(subdir, destSubdir, overwrite, cancellationToken)
-                .NoSync();
+            foreach (string subdir in System.IO.Directory.EnumerateDirectories(current.Source))
+                pending.Push((subdir, System.IO.Path.Combine(current.Destination, System.IO.Path.GetFileName(subdir))));
         }
     }
 

@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace Soenneker.Utils.Directory.Utils;
+namespace Soenneker.Utils.Directory.Dtos;
 
 /// <summary>
 /// Represents the get size options record.

@@ -1,4 +1,4 @@
-﻿using Soenneker.Utils.Directory.Utils;
+﻿using Soenneker.Utils.Directory.Dtos;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.Contracts;

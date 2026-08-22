@@ -2,18 +2,17 @@
 using Soenneker.Utils.Directory.Abstract;
 using Soenneker.Utils.Path.Abstract;
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.Contracts;
 using System.IO;
+using System.IO.Enumeration;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Soenneker.Extensions.Spans.Readonly.Chars;
 using Soenneker.Extensions.Task;
-using Soenneker.Extensions.ValueTask;
-using Soenneker.Utils.Directory.Utils;
+using Soenneker.Utils.Directory.Dtos;
 using Soenneker.Utils.ExecutionContexts;
 
 namespace Soenneker.Utils.Directory;
@@ -21,11 +20,10 @@ namespace Soenneker.Utils.Directory;
 ///<inheritdoc cref="IDirectoryUtil"/>
 public sealed class DirectoryUtil : IDirectoryUtil
 {
+    private const int _copyBufferSize = 128 * 1024;
+
     private readonly IPathUtil _pathUtil;
     private readonly ILogger<DirectoryUtil> _logger;
-
-    // Cache common indents to avoid new string(' ', n) per node in LogContentsRecursively
-    private static readonly ConcurrentDictionary<int, string> _indentCache = new();
 
     public DirectoryUtil(IPathUtil pathUtil, ILogger<DirectoryUtil> logger)
     {
@@ -37,7 +35,7 @@ public sealed class DirectoryUtil : IDirectoryUtil
     public ValueTask<List<string>> GetAllDirectories(string directory, CancellationToken cancellationToken = default) =>
         ExecutionContextUtil.RunInlineOrOffload(static s =>
         {
-            var (dir, token) = ((string Directory, CancellationToken Token))s!;
+            var (dir, token) = ((string Directory, CancellationToken Token))s;
             var list = new List<string>();
 
             foreach (var d in System.IO.Directory.EnumerateDirectories(dir))
@@ -57,7 +55,7 @@ public sealed class DirectoryUtil : IDirectoryUtil
     public ValueTask<List<string>> GetAllDirectoriesRecursively(string directory, CancellationToken cancellationToken = default) =>
         ExecutionContextUtil.RunInlineOrOffload(static s =>
         {
-            var (dir, token) = ((string Directory, CancellationToken Token))s!;
+            var (dir, token) = ((string Directory, CancellationToken Token))s;
             var list = new List<string>();
             foreach (var d in System.IO.Directory.EnumerateDirectories(dir, "*", SearchOption.AllDirectories))
             {
@@ -77,7 +75,7 @@ public sealed class DirectoryUtil : IDirectoryUtil
         _logger.LogDebug("Deleting directory ({dir}) ...", directory);
         return ExecutionContextUtil.RunInlineOrOffload(static s =>
         {
-            System.IO.Directory.Delete((string)s!, recursive: true);
+            System.IO.Directory.Delete(s, recursive: true);
         }, directory, cancellationToken);
     }
 
@@ -87,7 +85,7 @@ public sealed class DirectoryUtil : IDirectoryUtil
 
         return ExecutionContextUtil.RunInlineOrOffload(static s =>
         {
-            var dir = (string)s!;
+            var dir = s;
             // Exists check still required to avoid exception cost
             if (System.IO.Directory.Exists(dir))
                 System.IO.Directory.Delete(dir, recursive: true);
@@ -101,7 +99,7 @@ public sealed class DirectoryUtil : IDirectoryUtil
 
         return ExecutionContextUtil.RunInlineOrOffload(static s =>
         {
-            var dir = (string)s!;
+            var dir = s;
 
             // Note: CreateDirectory is idempotent; but if you truly need "created vs existed", keep Exists().
             if (System.IO.Directory.Exists(dir))
@@ -119,7 +117,7 @@ public sealed class DirectoryUtil : IDirectoryUtil
 
         return ExecutionContextUtil.RunInlineOrOffload(static s =>
         {
-            var (dir, token) = ((string Dir, CancellationToken Token))s!;
+            var (dir, token) = ((string Dir, CancellationToken Token))s;
             token.ThrowIfCancellationRequested();
 
             if (System.IO.Directory.Exists(dir))
@@ -137,7 +135,7 @@ public sealed class DirectoryUtil : IDirectoryUtil
 
         return ExecutionContextUtil.RunInlineOrOffload(static s =>
         {
-            var (dir, token) = ((string Dir, CancellationToken Token))s!;
+            var (dir, token) = ((string Dir, CancellationToken Token))s;
             token.ThrowIfCancellationRequested();
 
             if (System.IO.Directory.Exists(dir))
@@ -168,29 +166,22 @@ public sealed class DirectoryUtil : IDirectoryUtil
     public static ValueTask<List<string>> GetDirectoriesOrderedByLevels(string basePath, CancellationToken cancellationToken = default) =>
         ExecutionContextUtil.RunInlineOrOffload(static s =>
         {
-            var (basePath, token) = ((string BasePath, CancellationToken Token))s!;
+            var (basePath, token) = ((string BasePath, CancellationToken Token))s;
 
-            // Directory.GetDirectories returns array; if basePath is huge, you could stream + sort via list.
             var dirs = System.IO.Directory.GetDirectories(basePath, "*", SearchOption.AllDirectories);
-
-            // Precompute depth once per string to avoid repeated scanning during sort comparisons.
-            var items = new (string Path, int Depth)[dirs.Length];
+            var depths = new int[dirs.Length];
             var sep = System.IO.Path.DirectorySeparatorChar;
 
             for (var i = 0; i < dirs.Length; i++)
             {
                 token.ThrowIfCancellationRequested();
-                var p = dirs[i];
-                items[i] = (p, p.CountChar(sep));
+                depths[i] = dirs[i].CountChar(sep);
             }
 
-            Array.Sort(items, static (a, b) => a.Depth.CompareTo(b.Depth));
-
-            var result = new List<string>(items.Length);
-            for (var i = 0; i < items.Length; i++)
-                result.Add(items[i].Path);
-
-            return result;
+            // Sort the path array in place using compact integer keys. This avoids
+            // the much larger (string, int) tuple array used previously.
+            Array.Sort(depths, dirs);
+            return new List<string>(dirs);
         }, (basePath, cancellationToken), cancellationToken);
 
     /// <summary>
@@ -206,22 +197,33 @@ public sealed class DirectoryUtil : IDirectoryUtil
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ValueTask<bool> Exists(string directory, CancellationToken cancellationToken = default) =>
-        ExecutionContextUtil.RunInlineOrOffload(static s => System.IO.Directory.Exists((string)s!), directory, cancellationToken);
+        ExecutionContextUtil.RunInlineOrOffload(static s => System.IO.Directory.Exists(s), directory, cancellationToken);
 
     public ValueTask<List<string>> GetEmptyDirectories(string root, CancellationToken cancellationToken = default) =>
         ExecutionContextUtil.RunInlineOrOffload(static s =>
         {
-            var (root, token) = ((string Root, CancellationToken Token))s!;
+            var (root, token) = ((string Root, CancellationToken Token))s;
             var result = new List<string>();
+            var pending = new Stack<(string ScanPath, string ResultPath, bool IncludeInResult)>();
+            pending.Push((System.IO.Path.GetFullPath(root), root, false));
 
-            foreach (var d in System.IO.Directory.EnumerateDirectories(root, "*", SearchOption.AllDirectories))
+            while (pending.TryPop(out var current))
             {
                 token.ThrowIfCancellationRequested();
-                // Fast "Any()" without LINQ: just probe enumerator once.
-                using var e = System.IO.Directory.EnumerateFileSystemEntries(d)
-                                    .GetEnumerator();
-                if (!e.MoveNext())
-                    result.Add(d);
+
+                var entries = new FileSystemEnumerable<string?>(current.ScanPath,
+                    static (ref FileSystemEntry entry) => entry.IsDirectory ? entry.ToFullPath() : null);
+                var isEmpty = true;
+
+                foreach (var subdirectory in entries)
+                {
+                    isEmpty = false;
+                    if (subdirectory is not null)
+                        pending.Push((subdirectory, System.IO.Path.Combine(current.ResultPath, System.IO.Path.GetFileName(subdirectory)), true));
+                }
+
+                if (current.IncludeInResult && isEmpty)
+                    result.Add(current.ResultPath);
             }
 
             return result;
@@ -231,21 +233,46 @@ public sealed class DirectoryUtil : IDirectoryUtil
         ExecutionContextUtil.RunInlineOrOffload(static s =>
         {
             var (root, token, logger) =
-                ((string Root, CancellationToken Token, ILogger<DirectoryUtil> Logger))s!;
+                ((string Root, CancellationToken Token, ILogger<DirectoryUtil> Logger))s;
+            var states = new List<DirectoryState>(32) {new(root, -1)};
 
-            // If you want to delete deepest-first to avoid missing newly-empty parents,
-            // you can sort by depth descending. Keeping your current behavior.
-            foreach (var d in System.IO.Directory.EnumerateDirectories(root, "*", SearchOption.AllDirectories))
+            // Build the tree with one enumeration per directory. A reverse pass can
+            // then remove empty chains without rescanning every directory.
+            for (var index = 0; index < states.Count; index++)
             {
                 token.ThrowIfCancellationRequested();
+                var state = states[index];
+                var entries = new FileSystemEnumerable<string?>(state.Path,
+                    static (ref FileSystemEntry entry) => entry.IsDirectory ? entry.ToFullPath() : null);
 
-                using var e = System.IO.Directory.EnumerateFileSystemEntries(d)
-                                    .GetEnumerator();
-                if (!e.MoveNext())
+                foreach (var subdirectory in entries)
                 {
-                    logger.LogDebug("Deleting empty directory: {dir}", d);
-                    System.IO.Directory.Delete(d);
+                    token.ThrowIfCancellationRequested();
+
+                    if (subdirectory is null)
+                        state.HasFiles = true;
+                    else
+                        states.Add(new DirectoryState(subdirectory, index));
                 }
+
+                states[index] = state;
+            }
+
+            for (var index = states.Count - 1; index > 0; index--)
+            {
+                token.ThrowIfCancellationRequested();
+                var state = states[index];
+
+                if (!state.HasFiles && !state.HasRemainingChild)
+                {
+                    logger.LogDebug("Deleting empty directory: {dir}", state.Path);
+                    System.IO.Directory.Delete(state.Path);
+                    continue;
+                }
+
+                var parent = states[state.ParentIndex];
+                parent.HasRemainingChild = true;
+                states[state.ParentIndex] = parent;
             }
         }, (root, cancellationToken, _logger), cancellationToken);
 
@@ -257,15 +284,34 @@ public sealed class DirectoryUtil : IDirectoryUtil
 
         return ExecutionContextUtil.RunInlineOrOffload(static s =>
         {
-            var (root, fileName, token) = ((string Root, string FileName, CancellationToken Token))s!;
+            var (root, fileName, token) = ((string Root, string FileName, CancellationToken Token))s;
             var result = new List<string>();
+            var fullRoot = System.IO.Path.TrimEndingDirectorySeparator(System.IO.Path.GetFullPath(root));
+            var rootIsFullyQualified = System.IO.Path.IsPathFullyQualified(root);
+            var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+            var enumerationOptions = new EnumerationOptions
+            {
+                RecurseSubdirectories = true,
+                IgnoreInaccessible = false,
+                AttributesToSkip = 0
+            };
 
-            foreach (var d in System.IO.Directory.EnumerateDirectories(root, "*", SearchOption.AllDirectories))
+            var matches = new FileSystemEnumerable<string>(fullRoot, (ref FileSystemEntry entry) =>
+            {
+                var directory = entry.Directory.ToString();
+                return rootIsFullyQualified ? directory : System.IO.Path.Combine(root, System.IO.Path.GetRelativePath(fullRoot, directory));
+            }, enumerationOptions)
+            {
+                ShouldIncludePredicate = (ref FileSystemEntry entry) =>
+                    !entry.IsDirectory &&
+                    entry.FileName.Equals(fileName.AsSpan(), comparison) &&
+                    !entry.Directory.Equals(fullRoot.AsSpan(), comparison)
+            };
+
+            foreach (var directory in matches)
             {
                 token.ThrowIfCancellationRequested();
-                // Combine alloc is unavoidable; File.Exists is the real cost anyway.
-                if (File.Exists(System.IO.Path.Combine(d, fileName)))
-                    result.Add(d);
+                result.Add(directory);
             }
 
             return result;
@@ -275,14 +321,15 @@ public sealed class DirectoryUtil : IDirectoryUtil
     public ValueTask<List<string>> GetFilesByExtension(string directory, string extension, bool recursive = false, CancellationToken cancellationToken = default) =>
         ExecutionContextUtil.RunInlineOrOffload(static s =>
         {
-            var (directory, extension, recursive, token) = ((string Directory, string Extension, bool Recursive, CancellationToken Token))s!;
+            var (directory, extension, recursive, token) = ((string Directory, string Extension, bool Recursive, CancellationToken Token))s;
 
             // Avoid string interpolation + repeated TrimStart work
-            var ext = extension;
-            if (ext.Length > 0 && ext[0] == '.')
-                ext = ext.Substring(1);
-
-            var pattern = ext.Length == 0 ? "*" : "*." + ext;
+            var pattern = extension.Length switch
+            {
+                0 => "*",
+                _ when extension[0] == '.' => string.Concat("*", extension),
+                _ => string.Concat("*.", extension)
+            };
 
             var result = new List<string>();
 
@@ -306,7 +353,7 @@ public sealed class DirectoryUtil : IDirectoryUtil
             Access = FileAccess.Read,
             Share = FileShare.Read,
             Options = FileOptions.Asynchronous | FileOptions.SequentialScan,
-            BufferSize = 128 * 1024
+            BufferSize = 1
         };
 
         var dstOpts = new FileStreamOptions
@@ -315,32 +362,33 @@ public sealed class DirectoryUtil : IDirectoryUtil
             Access = FileAccess.Write,
             Share = FileShare.None,
             Options = FileOptions.Asynchronous | FileOptions.SequentialScan,
-            BufferSize = 128 * 1024
+            BufferSize = 1
         };
 
         var pending = new Stack<(string Source, string Destination)>();
         pending.Push((sourceDir, destDir));
 
-        while (pending.TryPop(out (string Source, string Destination) current))
+        while (pending.TryPop(out var current))
         {
             cancellationToken.ThrowIfCancellationRequested();
             System.IO.Directory.CreateDirectory(current.Destination);
 
-            foreach (string file in System.IO.Directory.EnumerateFiles(current.Source))
+            foreach (var file in System.IO.Directory.EnumerateFiles(current.Source))
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                string destFile = System.IO.Path.Combine(current.Destination, System.IO.Path.GetFileName(file));
+                var destFile = System.IO.Path.Combine(current.Destination, System.IO.Path.GetFileName(file));
 
                 if (!overwrite && File.Exists(destFile))
                     continue;
 
                 await using var sourceStream = new FileStream(file, srcOpts);
+                dstOpts.PreallocationSize = sourceStream.Length;
                 await using var destinationStream = new FileStream(destFile, dstOpts);
 
-                await sourceStream.CopyToAsync(destinationStream, 128 * 1024, cancellationToken).NoSync();
+                await sourceStream.CopyToAsync(destinationStream, _copyBufferSize, cancellationToken).NoSync();
             }
 
-            foreach (string subdir in System.IO.Directory.EnumerateDirectories(current.Source))
+            foreach (var subdir in System.IO.Directory.EnumerateDirectories(current.Source))
                 pending.Push((subdir, System.IO.Path.Combine(current.Destination, System.IO.Path.GetFileName(subdir))));
         }
     }
@@ -352,7 +400,7 @@ public sealed class DirectoryUtil : IDirectoryUtil
 
         return ExecutionContextUtil.RunInlineOrOffload(static s =>
         {
-            var (source, destination) = ((string Source, string Destination))s!;
+            var (source, destination) = ((string Source, string Destination))s;
             System.IO.Directory.Move(source, destination);
         }, (sourceDir, destinationDir), cancellationToken);
     }
@@ -394,7 +442,7 @@ public sealed class DirectoryUtil : IDirectoryUtil
     {
         var args = new LogArgs(path, indentLevel, cancellationToken, this);
 
-        return ExecutionContextUtil.RunInlineOrOffload(static s => ((LogArgs)s!).Self.LogContentsRecursivelySync((LogArgs)s!), args, cancellationToken);
+        return ExecutionContextUtil.RunInlineOrOffload(static s => s.Self.LogContentsRecursivelySync(s), args, cancellationToken);
     }
 
     private void LogContentsRecursivelySync(LogArgs args)
@@ -439,9 +487,20 @@ public sealed class DirectoryUtil : IDirectoryUtil
         if ((uint)indentLevel == 0)
             return string.Empty;
 
-        // 2 spaces per level
-        var spaces = indentLevel * 2;
-        return _indentCache.GetOrAdd(spaces, static s => new string(' ', s));
+        // The common depths use interned strings: no dictionary lookup and no
+        // per-node allocation. Very deep trees retain the previous behavior.
+        return indentLevel switch
+        {
+            1 => "  ",
+            2 => "    ",
+            3 => "      ",
+            4 => "        ",
+            5 => "          ",
+            6 => "            ",
+            7 => "              ",
+            8 => "                ",
+            _ => new string(' ', checked(indentLevel * 2))
+        };
     }
 
     [Pure]
@@ -453,7 +512,7 @@ public sealed class DirectoryUtil : IDirectoryUtil
         var args = new GetSizeArgs(directory, options, cancellationToken, _logger);
 
         // If on a UI SyncContext, offload; otherwise scan inline (fastest, lowest overhead).
-        return ExecutionContextUtil.RunInlineOrOffload(static s => ScanSize((GetSizeArgs)s!), args, cancellationToken);
+        return ExecutionContextUtil.RunInlineOrOffload(static s => ScanSize(s), args, cancellationToken);
     }
 
     private static long ScanSize(GetSizeArgs args)
@@ -462,7 +521,6 @@ public sealed class DirectoryUtil : IDirectoryUtil
 
         long totalSize = 0;
 
-        // Avoid DirectoryInfo allocations: use string paths + Enumerate*
         var stack = new Stack<string>(capacity: 32);
         stack.Push(args.Directory);
 
@@ -474,21 +532,42 @@ public sealed class DirectoryUtil : IDirectoryUtil
 
             try
             {
-                foreach (var filePath in System.IO.Directory.EnumerateFiles(currentDir))
+                if (opts.Recursive)
                 {
-                    args.CancellationToken.ThrowIfCancellationRequested();
+                    // Enumerate each directory once. File paths and FileInfo objects
+                    // are never materialized; only subdirectory paths are allocated.
+                    var entries = new FileSystemEnumerable<SizeEntry>(currentDir, static (ref FileSystemEntry entry) =>
+                        entry.IsDirectory ? new SizeEntry(entry.ToFullPath(), 0) : new SizeEntry(null, entry.Length));
 
-                    // FileInfo alloc; use FileStream? That's worse. FileInfo is ok here; it’s the IO that dominates.
-                    totalSize += new FileInfo(filePath).Length;
+                    foreach (var entry in entries)
+                    {
+                        args.CancellationToken.ThrowIfCancellationRequested();
+
+                        if (entry.Directory is not null)
+                            stack.Push(entry.Directory);
+                        else
+                            totalSize += entry.Length;
+                    }
+                }
+                else
+                {
+                    var files = new FileSystemEnumerable<long>(currentDir, static (ref FileSystemEntry entry) => entry.Length)
+                    {
+                        ShouldIncludePredicate = static (ref FileSystemEntry entry) => !entry.IsDirectory
+                    };
+
+                    foreach (var length in files)
+                    {
+                        args.CancellationToken.ThrowIfCancellationRequested();
+                        totalSize += length;
+                    }
                 }
 
                 opts.Progress?.Report(totalSize);
-
-                if (opts.Recursive)
-                {
-                    foreach (var subDir in System.IO.Directory.EnumerateDirectories(currentDir))
-                        stack.Push(subDir);
-                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
             }
             catch (UnauthorizedAccessException ex)
             {
@@ -511,7 +590,7 @@ public sealed class DirectoryUtil : IDirectoryUtil
     {
         var args = new MoveArgs(tempDir, cancellationToken, this);
 
-        return ExecutionContextUtil.RunInlineOrOffload(static s => ((MoveArgs)s!).Self.MoveContentsUpOneLevelStrictSync((MoveArgs)s!), args, cancellationToken);
+        return ExecutionContextUtil.RunInlineOrOffload(static s => s.Self.MoveContentsUpOneLevelStrictSync(s), args, cancellationToken);
     }
 
     private void MoveContentsUpOneLevelStrictSync(MoveArgs args)

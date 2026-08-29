@@ -14,6 +14,7 @@ public static class DirectoryUtilRegistrar
     /// Adds IDirectoryUtil as a scoped service. <para/>
     /// Shorthand for <code>services.TryAddScoped</code> <para/>
     /// </summary>
+    /// <returns>Adds IDirectoryUtil as a scoped service. <para/> Shorthand for <code>services.TryAddScoped</code> <para/>.</returns>
     public static IServiceCollection AddDirectoryUtilAsScoped(this IServiceCollection services)
     {
         services.AddPathUtilAsScoped().TryAddScoped<IDirectoryUtil, DirectoryUtil>();
@@ -24,6 +25,7 @@ public static class DirectoryUtilRegistrar
     /// Adds IDirectoryUtil as a singleton service. <para/>
     /// Shorthand for <code>services.TryAddSingleton</code> <para/>
     /// </summary>
+    /// <returns>Adds IDirectoryUtil as a singleton service. <para/> Shorthand for <code>services.TryAddSingleton</code> <para/>.</returns>
     public static IServiceCollection AddDirectoryUtilAsSingleton(this IServiceCollection services)
     {
         services.AddPathUtilAsSingleton().TryAddSingleton<IDirectoryUtil, DirectoryUtil>();

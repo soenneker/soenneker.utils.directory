@@ -163,6 +163,7 @@ public sealed class DirectoryUtil : IDirectoryUtil
     /// <remarks>
     /// Avoids Split() allocations by counting separators.
     /// </remarks>
+    /// <returns>The a list of directories ordered by their levels.</returns>
     public static ValueTask<List<string>> GetDirectoriesOrderedByLevels(string basePath, CancellationToken cancellationToken = default) =>
         ExecutionContextUtil.RunInlineOrOffload(static s =>
         {
@@ -187,6 +188,7 @@ public sealed class DirectoryUtil : IDirectoryUtil
     /// <summary>
     /// Generates a new temporary directory path, but does not actually create the directory.
     /// </summary>
+    /// <returns>Generates a new temporary directory path, but does not actually create the directory.</returns>
     [Pure]
     public static string GetNewTempDirectoryPath() =>
         System.IO.Path.Combine(System.IO.Path.GetTempPath(), Guid.NewGuid()

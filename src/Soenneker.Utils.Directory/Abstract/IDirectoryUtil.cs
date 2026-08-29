@@ -15,35 +15,41 @@ public interface IDirectoryUtil
     /// <summary>
     /// Retrieves all immediate subdirectories in the specified directory.
     /// </summary>
+    /// <returns>The all immediate subdirectories in the specified directory.</returns>
     [Pure]
     ValueTask<List<string>> GetAllDirectories(string directory, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Retrieves all immediate subdirectories as a list.
     /// </summary>
+    /// <returns>The all immediate subdirectories as a list.</returns>
     [Pure]
     ValueTask<List<string>> GetAllAsEnumerable(string directory, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Retrieves all subdirectories recursively from the specified directory.
     /// </summary>
+    /// <returns>The all subdirectories recursively from the specified directory.</returns>
     [Pure]
     ValueTask<List<string>> GetAllDirectoriesRecursively(string directory, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Retrieves all subdirectories recursively as a list.
     /// </summary>
+    /// <returns>The all subdirectories recursively as a list.</returns>
     [Pure]
     ValueTask<List<string>> GetAllRecursivelyAsEnumerable(string directory, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Deletes the specified directory and all its contents.
     /// </summary>
+    /// <returns>Deletes the specified directory and all its contents.</returns>
     ValueTask Delete(string directory, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Deletes the directory if it exists.
     /// </summary>
+    /// <returns>Deletes the directory if it exists.</returns>
     ValueTask DeleteIfExists(string directory, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -58,6 +64,7 @@ public interface IDirectoryUtil
     /// <remarks>
     /// Returns <see langword="true"/> only if the directory did not previously exist.
     /// </remarks>
+    /// <returns>Attempts to create the specified directory.</returns>
     ValueTask<bool> TryCreate(string directory, bool log = true, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -66,56 +73,66 @@ public interface IDirectoryUtil
     /// <exception cref="IOException">
     /// Thrown if the directory already exists.
     /// </exception>
+    /// <returns>Creates the specified directory and throws if it already exists.</returns>
     ValueTask CreateStrict(string directory, bool log = true, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets the working directory of the currently executing assembly.
     /// </summary>
+    /// <returns>The the working directory of the currently executing assembly.</returns>
     [Pure]
     string GetWorkingDirectory(bool log = false);
 
     /// <summary>
     /// Creates and returns a unique temporary directory path (and creates the folder).
     /// </summary>
+    /// <returns>Creates and returns a unique temporary directory path (and creates the folder).</returns>
     ValueTask<string> CreateTempDirectory(CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Checks whether the specified directory exists.
     /// </summary>
+    /// <returns><see langword="true"/> when the specified directory exists; otherwise <see langword="false"/>.</returns>
     [Pure]
     ValueTask<bool> Exists(string directory, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Retrieves all empty subdirectories within the specified root directory.
     /// </summary>
+    /// <returns>The all empty subdirectories within the specified root directory.</returns>
     [Pure]
     ValueTask<List<string>> GetEmptyDirectories(string root, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Deletes all empty directories within the specified root directory.
     /// </summary>
+    /// <returns>Deletes all empty directories within the specified root directory.</returns>
     ValueTask DeleteEmptyDirectories(string root, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Finds all subdirectories (recursively) that contain a file with the specified name.
     /// </summary>
+    /// <returns>Finds all subdirectories (recursively) that contain a file with the specified name.</returns>
     [Pure]
     ValueTask<List<string>> GetDirectoriesContainingFile(string root, string fileName, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Gets all files in the directory that match the given extension.
     /// </summary>
+    /// <returns>The all files in the directory that match the given extension.</returns>
     [Pure]
     ValueTask<List<string>> GetFilesByExtension(string directory, string extension, bool recursive = false, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Asynchronously copies the contents of one directory to another.
     /// </summary>
+    /// <returns>Asynchronously copies the contents of one directory to another.</returns>
     ValueTask CopyDirectory(string sourceDir, string destDir, bool overwrite = true, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Moves a directory to a new location.
     /// </summary>
+    /// <returns>Moves a directory to a new location.</returns>
     ValueTask Move(string sourceDir, string destinationDir, bool log = true, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -131,16 +148,12 @@ public interface IDirectoryUtil
     ValueTask LogContentsRecursively(string path, int indentLevel = 0, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Moves all contents of the specified directory up one level in the directory hierarchy, replacing the parent
-    /// directory's contents with those from the given directory.
+    /// Moves every entry from a directory into its parent and removes the now-empty directory, failing on conflicts.
     /// </summary>
-    /// <remarks>This method executes asynchronously and may offload the operation to a background context for
-    /// improved performance. Monitor the provided cancellation token to handle cancellation requests appropriately. The
-    /// method is strict and may fail if the operation cannot be completed as intended.</remarks>
-    /// <param name="tempDir">The path to the directory whose contents will be moved up one level. This path must refer to an existing
-    /// directory.</param>
-    /// <param name="cancellationToken">A token that can be used to cancel the move operation.</param>
-    /// <returns>A ValueTask that represents the asynchronous operation of moving the directory contents.</returns>
+    /// <param name="tempDir">The directory whose entries are moved into its parent.</param>
+    /// <param name="cancellationToken">Signals that the operation should stop.</param>
+    /// <returns>An awaitable that completes after all entries have moved and the source directory has been removed.</returns>
+    /// <remarks>Unlike a best-effort move, this method does not skip name collisions or inaccessible entries; the first failed move aborts the operation.</remarks>
     ValueTask MoveContentsUpOneLevelStrict(string tempDir, CancellationToken cancellationToken = default);
 
     /// <summary>

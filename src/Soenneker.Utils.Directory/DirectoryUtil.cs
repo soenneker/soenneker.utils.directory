@@ -214,7 +214,9 @@ public sealed class DirectoryUtil : IDirectoryUtil
                 token.ThrowIfCancellationRequested();
 
                 var entries = new FileSystemEnumerable<string?>(current.ScanPath,
-                    static (ref FileSystemEntry entry) => entry.IsDirectory ? entry.ToFullPath() : null);
+                    static (ref FileSystemEntry entry) => entry.IsDirectory && (entry.Attributes & FileAttributes.ReparsePoint) == 0
+                        ? entry.ToFullPath()
+                        : null);
                 var isEmpty = true;
 
                 foreach (var subdirectory in entries)
@@ -245,7 +247,9 @@ public sealed class DirectoryUtil : IDirectoryUtil
                 token.ThrowIfCancellationRequested();
                 var state = states[index];
                 var entries = new FileSystemEnumerable<string?>(state.Path,
-                    static (ref FileSystemEntry entry) => entry.IsDirectory ? entry.ToFullPath() : null);
+                    static (ref FileSystemEntry entry) => entry.IsDirectory && (entry.Attributes & FileAttributes.ReparsePoint) == 0
+                        ? entry.ToFullPath()
+                        : null);
 
                 foreach (var subdirectory in entries)
                 {
@@ -378,6 +382,10 @@ public sealed class DirectoryUtil : IDirectoryUtil
             foreach (var file in System.IO.Directory.EnumerateFiles(current.Source))
             {
                 cancellationToken.ThrowIfCancellationRequested();
+
+                if ((File.GetAttributes(file) & FileAttributes.ReparsePoint) != 0)
+                    continue;
+
                 var destFile = System.IO.Path.Combine(current.Destination, System.IO.Path.GetFileName(file));
 
                 if (!overwrite && File.Exists(destFile))
@@ -391,7 +399,12 @@ public sealed class DirectoryUtil : IDirectoryUtil
             }
 
             foreach (var subdir in System.IO.Directory.EnumerateDirectories(current.Source))
+            {
+                if ((File.GetAttributes(subdir) & FileAttributes.ReparsePoint) != 0)
+                    continue;
+
                 pending.Push((subdir, System.IO.Path.Combine(current.Destination, System.IO.Path.GetFileName(subdir))));
+            }
         }
     }
 
@@ -473,6 +486,10 @@ public sealed class DirectoryUtil : IDirectoryUtil
                 LogContentsRecursivelySync(new LogArgs(subdir, args.IndentLevel + 1, args.Token, this));
             }
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch (UnauthorizedAccessException ex)
         {
             _logger.LogWarning(ex, "Access denied to {Path}", args.Path);
@@ -539,7 +556,12 @@ public sealed class DirectoryUtil : IDirectoryUtil
                     // Enumerate each directory once. File paths and FileInfo objects
                     // are never materialized; only subdirectory paths are allocated.
                     var entries = new FileSystemEnumerable<SizeEntry>(currentDir, static (ref FileSystemEntry entry) =>
-                        entry.IsDirectory ? new SizeEntry(entry.ToFullPath(), 0) : new SizeEntry(null, entry.Length));
+                    {
+                        if ((entry.Attributes & FileAttributes.ReparsePoint) != 0)
+                            return new SizeEntry(null, 0);
+
+                        return entry.IsDirectory ? new SizeEntry(entry.ToFullPath(), 0) : new SizeEntry(null, entry.Length);
+                    });
 
                     foreach (var entry in entries)
                     {

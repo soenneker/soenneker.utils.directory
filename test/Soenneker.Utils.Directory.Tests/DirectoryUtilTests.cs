@@ -26,6 +26,40 @@ public class DirectoryUtilTests : HostedUnitTest
     }
 
     [Test]
+    public async ValueTask Delete_ShouldDeleteDirectoriesContainingReadOnlyFiles()
+    {
+        string root = CreateDirectoryContainingReadOnlyGitObject();
+
+        try
+        {
+            await _util.Delete(root);
+
+            System.IO.Directory.Exists(root).Should().BeFalse();
+        }
+        finally
+        {
+            DeleteTestDirectory(root);
+        }
+    }
+
+    [Test]
+    public async ValueTask DeleteIfExists_ShouldDeleteDirectoriesContainingReadOnlyFiles()
+    {
+        string root = CreateDirectoryContainingReadOnlyGitObject();
+
+        try
+        {
+            await _util.DeleteIfExists(root);
+
+            System.IO.Directory.Exists(root).Should().BeFalse();
+        }
+        finally
+        {
+            DeleteTestDirectory(root);
+        }
+    }
+
+    [Test]
     public async ValueTask GetSizeInBytes_ShouldIncludeNestedFiles()
     {
         var root = CreateTempDirectory();
@@ -105,5 +139,28 @@ public class DirectoryUtilTests : HostedUnitTest
         var path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"directory-util-tests-{Guid.NewGuid():N}");
         System.IO.Directory.CreateDirectory(path);
         return path;
+    }
+
+    private static string CreateDirectoryContainingReadOnlyGitObject()
+    {
+        string root = CreateTempDirectory();
+        string objectDirectory = System.IO.Path.Combine(root, ".git", "objects", "63");
+        System.IO.Directory.CreateDirectory(objectDirectory);
+
+        string objectPath = System.IO.Path.Combine(objectDirectory, "6866ce7d1a7d233781c80f2c9d3187c46274");
+        System.IO.File.WriteAllText(objectPath, "git object");
+        System.IO.File.SetAttributes(objectPath, System.IO.File.GetAttributes(objectPath) | System.IO.FileAttributes.ReadOnly);
+        return root;
+    }
+
+    private static void DeleteTestDirectory(string root)
+    {
+        if (!System.IO.Directory.Exists(root))
+            return;
+
+        foreach (string path in System.IO.Directory.EnumerateFileSystemEntries(root, "*", System.IO.SearchOption.AllDirectories))
+            System.IO.File.SetAttributes(path, System.IO.File.GetAttributes(path) & ~System.IO.FileAttributes.ReadOnly);
+
+        System.IO.Directory.Delete(root, recursive: true);
     }
 }

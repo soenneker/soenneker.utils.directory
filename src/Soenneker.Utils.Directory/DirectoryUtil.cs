@@ -75,8 +75,10 @@ public sealed class DirectoryUtil : IDirectoryUtil
         _logger.LogDebug("Deleting directory ({dir}) ...", directory);
         return ExecutionContextUtil.RunInlineOrOffload(static s =>
         {
-            System.IO.Directory.Delete(s, recursive: true);
-        }, directory, cancellationToken);
+            var (dir, token) = ((string Directory, CancellationToken Token))s;
+            RemoveReadOnlyAttributesForDelete(dir, token);
+            System.IO.Directory.Delete(dir, recursive: true);
+        }, (directory, cancellationToken), cancellationToken);
     }
 
     public ValueTask DeleteIfExists(string directory, CancellationToken cancellationToken = default)
@@ -85,11 +87,51 @@ public sealed class DirectoryUtil : IDirectoryUtil
 
         return ExecutionContextUtil.RunInlineOrOffload(static s =>
         {
-            var dir = s;
+            var (dir, token) = ((string Directory, CancellationToken Token))s;
             // Exists check still required to avoid exception cost
             if (System.IO.Directory.Exists(dir))
+            {
+                RemoveReadOnlyAttributesForDelete(dir, token);
                 System.IO.Directory.Delete(dir, recursive: true);
-        }, directory, cancellationToken);
+            }
+        }, (directory, cancellationToken), cancellationToken);
+    }
+
+    private static void RemoveReadOnlyAttributesForDelete(string directory, CancellationToken cancellationToken)
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        var pending = new Stack<string>();
+        pending.Push(directory);
+
+        while (pending.TryPop(out string? current))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            RemoveReadOnlyAttribute(current);
+
+            foreach (string entry in System.IO.Directory.EnumerateFileSystemEntries(current))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                FileAttributes attributes = File.GetAttributes(entry);
+
+                if ((attributes & FileAttributes.ReadOnly) != 0)
+                    File.SetAttributes(entry, attributes & ~FileAttributes.ReadOnly);
+
+                if ((attributes & (FileAttributes.Directory | FileAttributes.ReparsePoint)) == FileAttributes.Directory)
+                    pending.Push(entry);
+            }
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void RemoveReadOnlyAttribute(string path)
+    {
+        FileAttributes attributes = File.GetAttributes(path);
+
+        if ((attributes & FileAttributes.ReadOnly) != 0)
+            File.SetAttributes(path, attributes & ~FileAttributes.ReadOnly);
     }
 
     public ValueTask<bool> Create(string directory, bool log = true, CancellationToken cancellationToken = default)

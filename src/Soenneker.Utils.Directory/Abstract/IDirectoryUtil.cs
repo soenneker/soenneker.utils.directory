@@ -44,12 +44,14 @@ public interface IDirectoryUtil
     /// <summary>
     /// Deletes the specified directory and all its contents.
     /// </summary>
+    /// <remarks>On Windows, read-only attributes are cleared from the directory tree before deletion.</remarks>
     /// <returns>Deletes the specified directory and all its contents.</returns>
     ValueTask Delete(string directory, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Deletes the directory if it exists.
     /// </summary>
+    /// <remarks>On Windows, read-only attributes are cleared from the directory tree before deletion.</remarks>
     /// <returns>Deletes the directory if it exists.</returns>
     ValueTask DeleteIfExists(string directory, CancellationToken cancellationToken = default);
 

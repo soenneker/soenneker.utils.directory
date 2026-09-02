@@ -4,6 +4,7 @@ using Soenneker.Tests.HostedUnit;
 using Soenneker.Utils.Directory.Dtos;
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 
 
@@ -26,13 +27,13 @@ public class DirectoryUtilTests : HostedUnitTest
     }
 
     [Test]
-    public async ValueTask Delete_ShouldDeleteDirectoriesContainingReadOnlyFiles()
+    public async ValueTask Delete_ShouldDeleteDirectoriesContainingReadOnlyFiles(CancellationToken cancellationToken)
     {
         string root = CreateDirectoryContainingReadOnlyGitObject();
 
         try
         {
-            await _util.Delete(root);
+            await _util.Delete(root, cancellationToken: cancellationToken);
 
             System.IO.Directory.Exists(root).Should().BeFalse();
         }
@@ -43,13 +44,13 @@ public class DirectoryUtilTests : HostedUnitTest
     }
 
     [Test]
-    public async ValueTask DeleteIfExists_ShouldDeleteDirectoriesContainingReadOnlyFiles()
+    public async ValueTask DeleteIfExists_ShouldDeleteDirectoriesContainingReadOnlyFiles(CancellationToken cancellationToken)
     {
         string root = CreateDirectoryContainingReadOnlyGitObject();
 
         try
         {
-            await _util.DeleteIfExists(root);
+            await _util.DeleteIfExists(root, cancellationToken: cancellationToken);
 
             System.IO.Directory.Exists(root).Should().BeFalse();
         }
@@ -60,7 +61,7 @@ public class DirectoryUtilTests : HostedUnitTest
     }
 
     [Test]
-    public async ValueTask GetSizeInBytes_ShouldIncludeNestedFiles()
+    public async ValueTask GetSizeInBytes_ShouldIncludeNestedFiles(CancellationToken cancellationToken)
     {
         var root = CreateTempDirectory();
 
@@ -71,8 +72,8 @@ public class DirectoryUtilTests : HostedUnitTest
             await System.IO.File.WriteAllBytesAsync(System.IO.Path.Combine(root, "root.bin"), new byte[11]);
             await System.IO.File.WriteAllBytesAsync(System.IO.Path.Combine(child, "child.bin"), new byte[17]);
 
-            var recursive = await _util.GetSizeInBytes(root);
-            var topLevel = await _util.GetSizeInBytes(root, new GetSizeOptions {Recursive = false});
+            var recursive = await _util.GetSizeInBytes(root, cancellationToken: cancellationToken);
+            var topLevel = await _util.GetSizeInBytes(root, new GetSizeOptions {Recursive = false}, cancellationToken: cancellationToken);
 
             recursive.Should().Be(28);
             topLevel.Should().Be(11);
@@ -84,7 +85,7 @@ public class DirectoryUtilTests : HostedUnitTest
     }
 
     [Test]
-    public async ValueTask EmptyDirectoryOperations_ShouldDeleteEmptyChainsOnly()
+    public async ValueTask EmptyDirectoryOperations_ShouldDeleteEmptyChainsOnly(CancellationToken cancellationToken)
     {
         var root = CreateTempDirectory();
 
@@ -96,10 +97,10 @@ public class DirectoryUtilTests : HostedUnitTest
             System.IO.Directory.CreateDirectory(nonempty);
             await System.IO.File.WriteAllTextAsync(System.IO.Path.Combine(nonempty, "content.txt"), "content");
 
-            var emptyDirectories = await _util.GetEmptyDirectories(root);
+            var emptyDirectories = await _util.GetEmptyDirectories(root, cancellationToken: cancellationToken);
             emptyDirectories.Should().ContainSingle().Which.Should().Be(emptyLeaf);
 
-            await _util.DeleteEmptyDirectories(root);
+            await _util.DeleteEmptyDirectories(root, cancellationToken: cancellationToken);
 
             System.IO.Directory.Exists(System.IO.Path.Combine(root, "empty")).Should().BeFalse();
             System.IO.Directory.Exists(nonempty).Should().BeTrue();
@@ -111,7 +112,7 @@ public class DirectoryUtilTests : HostedUnitTest
     }
 
     [Test]
-    public async ValueTask GetDirectoriesContainingFile_ShouldReturnMatchingDescendants()
+    public async ValueTask GetDirectoriesContainingFile_ShouldReturnMatchingDescendants(CancellationToken cancellationToken)
     {
         var root = CreateTempDirectory();
 
@@ -124,7 +125,7 @@ public class DirectoryUtilTests : HostedUnitTest
             await System.IO.File.WriteAllTextAsync(System.IO.Path.Combine(root, "target.txt"), "excluded root match");
             await System.IO.File.WriteAllTextAsync(System.IO.Path.Combine(matching, "target.txt"), "match");
 
-            var result = await _util.GetDirectoriesContainingFile(root, "target.txt");
+            var result = await _util.GetDirectoriesContainingFile(root, "target.txt", cancellationToken: cancellationToken);
 
             result.Should().ContainSingle().Which.Should().Be(matching);
         }

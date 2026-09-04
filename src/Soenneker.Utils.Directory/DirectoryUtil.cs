@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Diagnostics.Contracts;
 using System.IO;
 using System.IO.Enumeration;
-using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -21,6 +20,25 @@ namespace Soenneker.Utils.Directory;
 public sealed class DirectoryUtil : IDirectoryUtil
 {
     private const int _copyBufferSize = 128 * 1024;
+    private static readonly string _workingDirectory = System.IO.Path.GetDirectoryName(typeof(DirectoryUtil).Assembly.Location)!;
+
+    private static readonly EnumerationOptions _allEntriesEnumerationOptions = new() {AttributesToSkip = 0};
+
+    private static readonly EnumerationOptions _recursiveAllEntriesEnumerationOptions = new()
+    {
+        RecurseSubdirectories = true,
+        IgnoreInaccessible = false,
+        AttributesToSkip = 0
+    };
+
+    private static readonly FileStreamOptions _copyReadOptions = new()
+    {
+        Mode = FileMode.Open,
+        Access = FileAccess.Read,
+        Share = FileShare.Read,
+        Options = FileOptions.Asynchronous | FileOptions.SequentialScan,
+        BufferSize = 1
+    };
 
     private readonly IPathUtil _pathUtil;
     private readonly ILogger<DirectoryUtil> _logger;
@@ -110,17 +128,20 @@ public sealed class DirectoryUtil : IDirectoryUtil
             cancellationToken.ThrowIfCancellationRequested();
             RemoveReadOnlyAttribute(current);
 
-            foreach (string entry in System.IO.Directory.EnumerateFileSystemEntries(current))
+            var entries = new FileSystemEnumerable<AttributeEntry>(current, static (ref FileSystemEntry entry) =>
+                new AttributeEntry(entry.ToFullPath(), entry.Attributes), _allEntriesEnumerationOptions);
+
+            foreach (AttributeEntry entry in entries)
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                FileAttributes attributes = File.GetAttributes(entry);
+                FileAttributes attributes = entry.Attributes;
 
                 if ((attributes & FileAttributes.ReadOnly) != 0)
-                    File.SetAttributes(entry, attributes & ~FileAttributes.ReadOnly);
+                    File.SetAttributes(entry.Path, attributes & ~FileAttributes.ReadOnly);
 
                 if ((attributes & (FileAttributes.Directory | FileAttributes.ReparsePoint)) == FileAttributes.Directory)
-                    pending.Push(entry);
+                    pending.Push(entry.Path);
             }
         }
     }
@@ -189,14 +210,10 @@ public sealed class DirectoryUtil : IDirectoryUtil
 
     public string GetWorkingDirectory(bool log = false)
     {
-        // Assembly.Location can be empty in some contexts; keeping your behavior.
-        var result = System.IO.Path.GetDirectoryName(Assembly.GetExecutingAssembly()
-                                                             .Location)!;
-
         if (log)
-            _logger.LogDebug("Retrieved working directory ({dir})", result);
+            _logger.LogDebug("Retrieved working directory ({dir})", _workingDirectory);
 
-        return result;
+        return _workingDirectory;
     }
 
     /// <summary>
@@ -232,9 +249,23 @@ public sealed class DirectoryUtil : IDirectoryUtil
     /// </summary>
     /// <returns>Generates a new temporary directory path, but does not actually create the directory.</returns>
     [Pure]
-    public static string GetNewTempDirectoryPath() =>
-        System.IO.Path.Combine(System.IO.Path.GetTempPath(), Guid.NewGuid()
-                                                                 .ToString("N"));
+    public static string GetNewTempDirectoryPath()
+    {
+        string prefix = System.IO.Path.GetTempPath();
+        bool needsSeparator = !System.IO.Path.EndsInDirectorySeparator(prefix);
+        var state = (Prefix: prefix, NeedsSeparator: needsSeparator, Id: Guid.NewGuid());
+
+        return string.Create(prefix.Length + (needsSeparator ? 1 : 0) + 32, state, static (destination, value) =>
+        {
+            value.Prefix.AsSpan().CopyTo(destination);
+            int idStart = value.Prefix.Length;
+
+            if (value.NeedsSeparator)
+                destination[idStart++] = System.IO.Path.DirectorySeparatorChar;
+
+            value.Id.TryFormat(destination[idStart..], out _, "N");
+        });
+    }
 
     public ValueTask<string> CreateTempDirectory(CancellationToken cancellationToken = default) =>
         _pathUtil.GetUniqueTempDirectory(null, true, cancellationToken);
@@ -249,7 +280,9 @@ public sealed class DirectoryUtil : IDirectoryUtil
             var (root, token) = ((string Root, CancellationToken Token))s;
             var result = new List<string>();
             var pending = new Stack<(string ScanPath, string ResultPath, bool IncludeInResult)>();
-            pending.Push((System.IO.Path.GetFullPath(root), root, false));
+            string scanRoot = System.IO.Path.GetFullPath(root);
+            bool canReuseScanPath = string.Equals(scanRoot, root, StringComparison.Ordinal);
+            pending.Push((scanRoot, root, false));
 
             while (pending.TryPop(out var current))
             {
@@ -265,7 +298,12 @@ public sealed class DirectoryUtil : IDirectoryUtil
                 {
                     isEmpty = false;
                     if (subdirectory is not null)
-                        pending.Push((subdirectory, System.IO.Path.Combine(current.ResultPath, System.IO.Path.GetFileName(subdirectory)), true));
+                    {
+                        string resultPath = canReuseScanPath
+                            ? subdirectory
+                            : System.IO.Path.Combine(current.ResultPath, System.IO.Path.GetFileName(subdirectory));
+                        pending.Push((subdirectory, resultPath, true));
+                    }
                 }
 
                 if (current.IncludeInResult && isEmpty)
@@ -337,18 +375,11 @@ public sealed class DirectoryUtil : IDirectoryUtil
             var fullRoot = System.IO.Path.TrimEndingDirectorySeparator(System.IO.Path.GetFullPath(root));
             var rootIsFullyQualified = System.IO.Path.IsPathFullyQualified(root);
             var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
-            var enumerationOptions = new EnumerationOptions
-            {
-                RecurseSubdirectories = true,
-                IgnoreInaccessible = false,
-                AttributesToSkip = 0
-            };
-
             var matches = new FileSystemEnumerable<string>(fullRoot, (ref FileSystemEntry entry) =>
             {
                 var directory = entry.Directory.ToString();
                 return rootIsFullyQualified ? directory : System.IO.Path.Combine(root, System.IO.Path.GetRelativePath(fullRoot, directory));
-            }, enumerationOptions)
+            }, _recursiveAllEntriesEnumerationOptions)
             {
                 ShouldIncludePredicate = (ref FileSystemEntry entry) =>
                     !entry.IsDirectory &&
@@ -395,15 +426,6 @@ public sealed class DirectoryUtil : IDirectoryUtil
         if (!System.IO.Directory.Exists(sourceDir))
             throw new DirectoryNotFoundException($"Source directory not found: {sourceDir}");
 
-        var srcOpts = new FileStreamOptions
-        {
-            Mode = FileMode.Open,
-            Access = FileAccess.Read,
-            Share = FileShare.Read,
-            Options = FileOptions.Asynchronous | FileOptions.SequentialScan,
-            BufferSize = 1
-        };
-
         var dstOpts = new FileStreamOptions
         {
             Mode = overwrite ? FileMode.Create : FileMode.CreateNew,
@@ -421,31 +443,32 @@ public sealed class DirectoryUtil : IDirectoryUtil
             cancellationToken.ThrowIfCancellationRequested();
             System.IO.Directory.CreateDirectory(current.Destination);
 
-            foreach (var file in System.IO.Directory.EnumerateFiles(current.Source))
+            string destination = current.Destination;
+            var entries = new FileSystemEnumerable<CopyEntry>(current.Source, (ref FileSystemEntry entry) =>
+                new CopyEntry(entry.ToFullPath(), System.IO.Path.Join(destination.AsSpan(), entry.FileName), entry.IsDirectory, entry.Attributes),
+                _allEntriesEnumerationOptions);
+
+            foreach (CopyEntry entry in entries)
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                if ((File.GetAttributes(file) & FileAttributes.ReparsePoint) != 0)
+                if ((entry.Attributes & FileAttributes.ReparsePoint) != 0)
                     continue;
 
-                var destFile = System.IO.Path.Combine(current.Destination, System.IO.Path.GetFileName(file));
+                if (entry.IsDirectory)
+                {
+                    pending.Push((entry.SourcePath, entry.DestinationPath));
+                    continue;
+                }
 
-                if (!overwrite && File.Exists(destFile))
+                if (!overwrite && File.Exists(entry.DestinationPath))
                     continue;
 
-                await using var sourceStream = new FileStream(file, srcOpts);
+                await using var sourceStream = new FileStream(entry.SourcePath, _copyReadOptions);
                 dstOpts.PreallocationSize = sourceStream.Length;
-                await using var destinationStream = new FileStream(destFile, dstOpts);
+                await using var destinationStream = new FileStream(entry.DestinationPath, dstOpts);
 
                 await sourceStream.CopyToAsync(destinationStream, _copyBufferSize, cancellationToken).NoSync();
-            }
-
-            foreach (var subdir in System.IO.Directory.EnumerateDirectories(current.Source))
-            {
-                if ((File.GetAttributes(subdir) & FileAttributes.ReparsePoint) != 0)
-                    continue;
-
-                pending.Push((subdir, System.IO.Path.Combine(current.Destination, System.IO.Path.GetFileName(subdir))));
             }
         }
     }
@@ -578,7 +601,9 @@ public sealed class DirectoryUtil : IDirectoryUtil
 
     private static long ScanSize(GetSizeArgs args)
     {
-        var opts = args.Options ?? new GetSizeOptions();
+        bool recursive = args.Options?.Recursive ?? true;
+        bool continueOnError = args.Options?.ContinueOnError ?? true;
+        IProgress<long>? progress = args.Options?.Progress;
 
         long totalSize = 0;
 
@@ -593,7 +618,7 @@ public sealed class DirectoryUtil : IDirectoryUtil
 
             try
             {
-                if (opts.Recursive)
+                if (recursive)
                 {
                     // Enumerate each directory once. File paths and FileInfo objects
                     // are never materialized; only subdirectory paths are allocated.
@@ -629,7 +654,7 @@ public sealed class DirectoryUtil : IDirectoryUtil
                     }
                 }
 
-                opts.Progress?.Report(totalSize);
+                progress?.Report(totalSize);
             }
             catch (OperationCanceledException)
             {
@@ -638,13 +663,13 @@ public sealed class DirectoryUtil : IDirectoryUtil
             catch (UnauthorizedAccessException ex)
             {
                 args.Logger.LogWarning(ex, "Access denied to directory {DirectoryPath}, skipping.", currentDir);
-                if (!opts.ContinueOnError)
+                if (!continueOnError)
                     throw;
             }
             catch (Exception ex)
             {
                 args.Logger.LogError(ex, "An error occurred while scanning directory {DirectoryPath}, skipping.", currentDir);
-                if (!opts.ContinueOnError)
+                if (!continueOnError)
                     throw;
             }
         }
@@ -719,4 +744,8 @@ public sealed class DirectoryUtil : IDirectoryUtil
         System.IO.Directory.Delete(innerDir, recursive: true);
         _logger.LogInformation("Inner directory '{inner}' deleted after move", innerDir);
     }
+
+    private readonly record struct AttributeEntry(string Path, FileAttributes Attributes);
+
+    private readonly record struct CopyEntry(string SourcePath, string DestinationPath, bool IsDirectory, FileAttributes Attributes);
 }

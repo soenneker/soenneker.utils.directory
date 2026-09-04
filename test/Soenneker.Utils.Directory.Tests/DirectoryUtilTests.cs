@@ -135,6 +135,35 @@ public class DirectoryUtilTests : HostedUnitTest
         }
     }
 
+    [Test]
+    public async ValueTask CopyDirectory_ShouldCopyNestedFilesAndEmptyDirectories(CancellationToken cancellationToken)
+    {
+        string source = CreateTempDirectory();
+        string destination = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"directory-util-tests-{Guid.NewGuid():N}");
+
+        try
+        {
+            string nested = System.IO.Path.Combine(source, "nested");
+            string empty = System.IO.Path.Combine(source, "empty");
+            System.IO.Directory.CreateDirectory(nested);
+            System.IO.Directory.CreateDirectory(empty);
+            await System.IO.File.WriteAllTextAsync(System.IO.Path.Combine(nested, "content.txt"), "content", cancellationToken);
+
+            await _util.CopyDirectory(source, destination, cancellationToken: cancellationToken);
+
+            System.IO.Directory.Exists(System.IO.Path.Combine(destination, "empty")).Should().BeTrue();
+            string content = await System.IO.File.ReadAllTextAsync(System.IO.Path.Combine(destination, "nested", "content.txt"), cancellationToken);
+            content.Should().Be("content");
+        }
+        finally
+        {
+            System.IO.Directory.Delete(source, recursive: true);
+
+            if (System.IO.Directory.Exists(destination))
+                System.IO.Directory.Delete(destination, recursive: true);
+        }
+    }
+
     private static string CreateTempDirectory()
     {
         var path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"directory-util-tests-{Guid.NewGuid():N}");

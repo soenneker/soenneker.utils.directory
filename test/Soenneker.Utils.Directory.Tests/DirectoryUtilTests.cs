@@ -276,6 +276,32 @@ public class DirectoryUtilTests : HostedUnitTest
         }
     }
 
+    [Test]
+    public async ValueTask GetDirectoriesOrderedByLevels_ShouldSortMixedDepths(CancellationToken cancellationToken)
+    {
+        string root = CreateTempDirectory();
+        try
+        {
+            (await DirectoryUtil.GetDirectoriesOrderedByLevels(root, cancellationToken)).Should().BeEmpty();
+            string parent = System.IO.Path.Combine(root, "parent");
+            string child = System.IO.Path.Combine(parent, "child");
+            string leaf = System.IO.Path.Combine(child, "leaf");
+            System.IO.Directory.CreateDirectory(leaf);
+            string sibling = System.IO.Path.Combine(root, "sibling");
+            System.IO.Directory.CreateDirectory(sibling);
+
+            var actual = await DirectoryUtil.GetDirectoriesOrderedByLevels(root, cancellationToken);
+            actual.Should().HaveCount(4);
+            actual.GetRange(0, 2).Should().BeEquivalentTo(new[] { parent, sibling });
+            actual[2].Should().Be(child);
+            actual[3].Should().Be(leaf);
+        }
+        finally
+        {
+            System.IO.Directory.Delete(root, recursive: true);
+        }
+    }
+
     private static string CreateTempDirectory()
     {
         var path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"directory-util-tests-{Guid.NewGuid():N}");

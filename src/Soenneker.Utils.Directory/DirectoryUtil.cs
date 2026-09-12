@@ -7,6 +7,7 @@ using System.Diagnostics.Contracts;
 using System.IO;
 using System.IO.Enumeration;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Soenneker.Extensions.Spans.Readonly.Chars;
@@ -16,7 +17,6 @@ using Soenneker.Utils.ExecutionContexts;
 
 namespace Soenneker.Utils.Directory;
 
-///<inheritdoc cref="IDirectoryUtil"/>
 public sealed class DirectoryUtil : IDirectoryUtil
 {
     private const int _copyBufferSize = 128 * 1024;
@@ -120,16 +120,21 @@ public sealed class DirectoryUtil : IDirectoryUtil
         if (!OperatingSystem.IsWindows())
             return;
 
+        cancellationToken.ThrowIfCancellationRequested();
+        RemoveReadOnlyAttribute(directory);
         var pending = new Stack<string>();
         pending.Push(directory);
 
         while (pending.TryPop(out string? current))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            RemoveReadOnlyAttribute(current);
-
             var entries = new FileSystemEnumerable<AttributeEntry>(current, static (ref entry) =>
-                new AttributeEntry(entry.ToFullPath(), entry.Attributes), _allEntriesEnumerationOptions);
+                new AttributeEntry(entry.ToFullPath(), entry.Attributes), _allEntriesEnumerationOptions)
+            {
+                // Writable files need neither an allocated path nor attribute updates.
+                ShouldIncludePredicate = static (ref entry) => (entry.Attributes & FileAttributes.ReadOnly) != 0 ||
+                    (entry.Attributes & (FileAttributes.Directory | FileAttributes.ReparsePoint)) == FileAttributes.Directory
+            };
 
             foreach (AttributeEntry entry in entries)
             {
@@ -228,20 +233,24 @@ public sealed class DirectoryUtil : IDirectoryUtil
         {
             var (basePath, token) = ((string BasePath, CancellationToken Token))s;
 
-            var dirs = System.IO.Directory.GetDirectories(basePath, "*", SearchOption.AllDirectories);
-            var depths = new int[dirs.Length];
+            var dirs = new List<string>();
+            foreach (string directory in System.IO.Directory.EnumerateDirectories(basePath, "*", SearchOption.AllDirectories))
+            {
+                token.ThrowIfCancellationRequested();
+                dirs.Add(directory);
+            }
+            var depths = new int[dirs.Count];
             var sep = System.IO.Path.DirectorySeparatorChar;
 
-            for (var i = 0; i < dirs.Length; i++)
+            for (var i = 0; i < dirs.Count; i++)
             {
                 token.ThrowIfCancellationRequested();
                 depths[i] = dirs[i].CountChar(sep);
             }
 
-            // Sort the path array in place using compact integer keys. This avoids
-            // the much larger (string, int) tuple array used previously.
-            Array.Sort(depths, dirs);
-            return new List<string>(dirs);
+            // Sort directly in the returned list's storage, avoiding an intermediate path array.
+            depths.AsSpan().Sort(CollectionsMarshal.AsSpan(dirs));
+            return dirs;
         }, (basePath, cancellationToken), cancellationToken);
 
     /// <summary>
@@ -441,6 +450,14 @@ public sealed class DirectoryUtil : IDirectoryUtil
                 }
             }
 
+            if (subtrees.Count == 0)
+                return result;
+            if (subtrees.Count == 1)
+            {
+                AddFiles(subtrees[0], pattern, SearchOption.AllDirectories, result, token);
+                return result;
+            }
+
             var matches = new List<string>[subtrees.Count];
             try
             {
@@ -457,6 +474,13 @@ public sealed class DirectoryUtil : IDirectoryUtil
                 throw;
             }
 
+            int totalCount = result.Count;
+            foreach (var files in matches)
+            {
+                token.ThrowIfCancellationRequested();
+                totalCount = checked(totalCount + files.Count);
+            }
+            result.EnsureCapacity(totalCount);
             foreach (var files in matches)
             {
                 token.ThrowIfCancellationRequested();
@@ -527,14 +551,15 @@ public sealed class DirectoryUtil : IDirectoryUtil
 
             string destination = current.Destination;
             var entries = new FileSystemEnumerable<CopyEntry>(current.Source, (ref entry) =>
-                new CopyEntry(entry.ToFullPath(), System.IO.Path.Join(destination.AsSpan(), entry.FileName), entry.IsDirectory, entry.Attributes),
-                _allEntriesEnumerationOptions);
+                new CopyEntry(entry.ToFullPath(), System.IO.Path.Join(destination.AsSpan(), entry.FileName), entry.IsDirectory),
+                _allEntriesEnumerationOptions)
+            {
+                ShouldIncludePredicate = static (ref entry) => (entry.Attributes & FileAttributes.ReparsePoint) == 0
+            };
 
             foreach (CopyEntry entry in entries)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if ((entry.Attributes & FileAttributes.ReparsePoint) != 0)
-                    continue;
 
                 if (entry.IsDirectory)
                     pending.Push((entry.SourcePath, entry.DestinationPath));
@@ -818,5 +843,5 @@ public sealed class DirectoryUtil : IDirectoryUtil
 
     private readonly record struct AttributeEntry(string Path, FileAttributes Attributes);
 
-    private readonly record struct CopyEntry(string SourcePath, string DestinationPath, bool IsDirectory, FileAttributes Attributes);
+    private readonly record struct CopyEntry(string SourcePath, string DestinationPath, bool IsDirectory);
 }

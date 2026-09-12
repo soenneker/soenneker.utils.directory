@@ -164,6 +164,118 @@ public class DirectoryUtilTests : HostedUnitTest
         }
     }
 
+    [Test]
+    public async ValueTask GetFilesByExtension_ShouldMatchSequentialEnumeration(CancellationToken cancellationToken)
+    {
+        string root = CreateTempDirectory();
+        try
+        {
+            foreach (string relative in new[] { "", "empty", "first", "first/deep", "first/deep/nested", ".hidden/child", "second/deep" })
+            {
+                string directory = System.IO.Path.Combine(root, relative);
+                System.IO.Directory.CreateDirectory(directory);
+                if (relative == "empty")
+                    continue;
+                await System.IO.File.WriteAllTextAsync(System.IO.Path.Combine(directory, "solution.slnx"), "", cancellationToken);
+                await System.IO.File.WriteAllTextAsync(System.IO.Path.Combine(directory, "other.txt"), "", cancellationToken);
+            }
+
+            foreach (string searchRoot in new[] { root, System.IO.Path.GetRelativePath(Environment.CurrentDirectory, root) })
+            foreach (string extension in new[] { "slnx", ".slnx", "" })
+            foreach (bool recursive in new[] { false, true })
+            {
+                string pattern = extension.Length == 0 ? "*" : "*.slnx";
+                string[] expected = System.IO.Directory.GetFiles(searchRoot, pattern,
+                    recursive ? System.IO.SearchOption.AllDirectories : System.IO.SearchOption.TopDirectoryOnly);
+                foreach (int degree in new[] { 1, 2, 8 })
+                {
+                    var actual = await _util.GetFilesByExtension(searchRoot, extension, recursive, degree, cancellationToken);
+                    actual.Should().BeEquivalentTo(expected);
+                }
+                var defaults = await _util.GetFilesByExtension(searchRoot, extension, recursive, cancellationToken);
+                defaults.Should().BeEquivalentTo(expected);
+            }
+
+            using var canceled = new CancellationTokenSource();
+            canceled.Cancel();
+            Func<Task> searchCanceled = async () => { await _util.GetFilesByExtension(root, "slnx", true, 8, canceled.Token); };
+            await searchCanceled.Should().ThrowAsync<OperationCanceledException>();
+            Func<Task> invalidDegree = async () => { await _util.GetFilesByExtension(root, "slnx", true, 0, cancellationToken); };
+            await invalidDegree.Should().ThrowAsync<ArgumentOutOfRangeException>();
+            Func<Task> missing = async () => { await _util.GetFilesByExtension(System.IO.Path.Combine(root, "missing"), "slnx", true, 8, cancellationToken); };
+            await missing.Should().ThrowAsync<System.IO.DirectoryNotFoundException>();
+        }
+        finally
+        {
+            System.IO.Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Test]
+    public async ValueTask CopyDirectory_ShouldCopyDifferentSizesAndRespectOverwrite(CancellationToken cancellationToken)
+    {
+        string root = CreateTempDirectory();
+        string source = System.IO.Path.Combine(root, "source");
+        System.IO.Directory.CreateDirectory(source);
+        try
+        {
+            var expected = new Dictionary<string, byte[]>();
+            for (int index = 0; index < 12; index++)
+            {
+                string relative = System.IO.Path.Combine($"child-{index % 3}", $"file-{index}.bin");
+                string path = System.IO.Path.Combine(source, relative);
+                System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path)!);
+                var content = new byte[index * 32769];
+                new System.Random(index).NextBytes(content);
+                expected.Add(relative, content);
+                await System.IO.File.WriteAllBytesAsync(path, content, cancellationToken);
+            }
+            System.IO.Directory.CreateDirectory(System.IO.Path.Combine(source, "empty", "nested"));
+
+            foreach (int degree in new[] { 1, 4 })
+            {
+                string destination = System.IO.Path.Combine(root, $"destination-{degree}");
+                System.IO.Directory.CreateDirectory(System.IO.Path.Combine(destination, "child-0"));
+                string existing = System.IO.Path.Combine(destination, "child-0", "file-0.bin");
+                await System.IO.File.WriteAllTextAsync(existing, "keep", cancellationToken);
+                await _util.CopyDirectory(source, destination, false, degree, cancellationToken);
+                (await System.IO.File.ReadAllTextAsync(existing, cancellationToken)).Should().Be("keep");
+                foreach (var file in expected)
+                {
+                    if (file.Key == System.IO.Path.Combine("child-0", "file-0.bin"))
+                        continue;
+                    byte[] actual = await System.IO.File.ReadAllBytesAsync(System.IO.Path.Combine(destination, file.Key), cancellationToken);
+                    actual.AsSpan().SequenceEqual(file.Value).Should().BeTrue();
+                }
+                await _util.CopyDirectory(source, destination, true, degree, cancellationToken);
+                foreach (var file in expected)
+                {
+                    byte[] actual = await System.IO.File.ReadAllBytesAsync(System.IO.Path.Combine(destination, file.Key), cancellationToken);
+                    actual.AsSpan().SequenceEqual(file.Value).Should().BeTrue();
+                }
+                System.IO.Directory.Exists(System.IO.Path.Combine(destination, "empty", "nested")).Should().BeTrue();
+            }
+
+            using var canceled = new CancellationTokenSource();
+            canceled.Cancel();
+            string untouched = System.IO.Path.Combine(root, "untouched");
+            Func<Task> cancel = async () => { await _util.CopyDirectory(source, untouched, cancellationToken: canceled.Token); };
+            await cancel.Should().ThrowAsync<OperationCanceledException>();
+            System.IO.Directory.Exists(untouched).Should().BeFalse();
+            Func<Task> invalid = async () => { await _util.CopyDirectory(source, untouched, true, 0, cancellationToken); };
+            await invalid.Should().ThrowAsync<ArgumentOutOfRangeException>();
+
+            string conflict = System.IO.Path.Combine(root, "conflict");
+            System.IO.Directory.CreateDirectory(System.IO.Path.Combine(conflict, "child-0", "file-0.bin"));
+            Func<Task> fail = async () => { await _util.CopyDirectory(source, conflict, cancellationToken: cancellationToken); };
+            await fail.Should().ThrowAsync<UnauthorizedAccessException>();
+        }
+        finally
+        {
+            System.IO.Directory.Delete(root, recursive: true);
+        }
+    }
+
     private static string CreateTempDirectory()
     {
         var path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"directory-util-tests-{Guid.NewGuid():N}");

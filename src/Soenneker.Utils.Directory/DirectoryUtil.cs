@@ -128,7 +128,7 @@ public sealed class DirectoryUtil : IDirectoryUtil
             cancellationToken.ThrowIfCancellationRequested();
             RemoveReadOnlyAttribute(current);
 
-            var entries = new FileSystemEnumerable<AttributeEntry>(current, static (ref FileSystemEntry entry) =>
+            var entries = new FileSystemEnumerable<AttributeEntry>(current, static (ref entry) =>
                 new AttributeEntry(entry.ToFullPath(), entry.Attributes), _allEntriesEnumerationOptions);
 
             foreach (AttributeEntry entry in entries)
@@ -289,7 +289,7 @@ public sealed class DirectoryUtil : IDirectoryUtil
                 token.ThrowIfCancellationRequested();
 
                 var entries = new FileSystemEnumerable<string?>(current.ScanPath,
-                    static (ref FileSystemEntry entry) => entry.IsDirectory && (entry.Attributes & FileAttributes.ReparsePoint) == 0
+                    static (ref entry) => entry.IsDirectory && (entry.Attributes & FileAttributes.ReparsePoint) == 0
                         ? entry.ToFullPath()
                         : null);
                 var isEmpty = true;
@@ -327,7 +327,7 @@ public sealed class DirectoryUtil : IDirectoryUtil
                 token.ThrowIfCancellationRequested();
                 var state = states[index];
                 var entries = new FileSystemEnumerable<string?>(state.Path,
-                    static (ref FileSystemEntry entry) => entry.IsDirectory && (entry.Attributes & FileAttributes.ReparsePoint) == 0
+                    static (ref entry) => entry.IsDirectory && (entry.Attributes & FileAttributes.ReparsePoint) == 0
                         ? entry.ToFullPath()
                         : null);
 
@@ -375,13 +375,13 @@ public sealed class DirectoryUtil : IDirectoryUtil
             var fullRoot = System.IO.Path.TrimEndingDirectorySeparator(System.IO.Path.GetFullPath(root));
             var rootIsFullyQualified = System.IO.Path.IsPathFullyQualified(root);
             var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
-            var matches = new FileSystemEnumerable<string>(fullRoot, (ref FileSystemEntry entry) =>
+            var matches = new FileSystemEnumerable<string>(fullRoot, (ref entry) =>
             {
                 var directory = entry.Directory.ToString();
                 return rootIsFullyQualified ? directory : System.IO.Path.Combine(root, System.IO.Path.GetRelativePath(fullRoot, directory));
             }, _recursiveAllEntriesEnumerationOptions)
             {
-                ShouldIncludePredicate = (ref FileSystemEntry entry) =>
+                ShouldIncludePredicate = (ref entry) =>
                     !entry.IsDirectory &&
                     entry.FileName.Equals(fileName.AsSpan(), comparison) &&
                     !entry.Directory.Equals(fullRoot.AsSpan(), comparison)
@@ -398,9 +398,16 @@ public sealed class DirectoryUtil : IDirectoryUtil
     }
 
     public ValueTask<List<string>> GetFilesByExtension(string directory, string extension, bool recursive = false, CancellationToken cancellationToken = default) =>
-        ExecutionContextUtil.RunInlineOrOffload(static s =>
+        GetFilesByExtension(directory, extension, recursive, 8, cancellationToken);
+
+    public ValueTask<List<string>> GetFilesByExtension(string directory, string extension, bool recursive, int maxDegreeOfParallelism,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(maxDegreeOfParallelism, 1);
+        return ExecutionContextUtil.RunInlineOrOffload(static s =>
         {
-            var (directory, extension, recursive, token) = ((string Directory, string Extension, bool Recursive, CancellationToken Token))s;
+            var (directory, extension, recursive, degree, token) = s;
+            token.ThrowIfCancellationRequested();
 
             // Avoid string interpolation + repeated TrimStart work
             var pattern = extension.Length switch
@@ -412,63 +419,127 @@ public sealed class DirectoryUtil : IDirectoryUtil
 
             var result = new List<string>();
 
-            foreach (var f in System.IO.Directory.EnumerateFiles(directory, pattern, recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly))
+            if (!recursive || degree == 1 || pattern.AsSpan().IndexOfAny(System.IO.Path.DirectorySeparatorChar,
+                    System.IO.Path.AltDirectorySeparatorChar) >= 0)
+            {
+                AddFiles(directory, pattern, recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly, result, token);
+                return result;
+            }
+
+            // Partition two levels down so a large collection under one immediate child
+            // can use multiple workers. Each subtree owns its enumerator and result list.
+            AddFiles(directory, pattern, SearchOption.TopDirectoryOnly, result, token);
+            var subtrees = new List<string>();
+            foreach (string child in System.IO.Directory.EnumerateDirectories(directory))
             {
                 token.ThrowIfCancellationRequested();
-                result.Add(f);
+                AddFiles(child, pattern, SearchOption.TopDirectoryOnly, result, token);
+                foreach (string subtree in System.IO.Directory.EnumerateDirectories(child))
+                {
+                    token.ThrowIfCancellationRequested();
+                    subtrees.Add(subtree);
+                }
+            }
+
+            var matches = new List<string>[subtrees.Count];
+            try
+            {
+                Parallel.For(0, subtrees.Count, new ParallelOptions {MaxDegreeOfParallelism = degree, CancellationToken = token}, index =>
+                {
+                    var files = new List<string>();
+                    AddFiles(subtrees[index], pattern, SearchOption.AllDirectories, files, token);
+                    matches[index] = files;
+                });
+            }
+            catch (AggregateException ex) when (ex.InnerExceptions.Count == 1)
+            {
+                System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(ex.InnerExceptions[0]).Throw();
+                throw;
+            }
+
+            foreach (var files in matches)
+            {
+                token.ThrowIfCancellationRequested();
+                result.AddRange(files);
             }
 
             return result;
-        }, (directory, extension, recursive, cancellationToken), cancellationToken);
+        }, (directory, extension, recursive, maxDegreeOfParallelism, cancellationToken), cancellationToken);
+    }
 
-    public async ValueTask CopyDirectory(string sourceDir, string destDir, bool overwrite = true, CancellationToken cancellationToken = default)
+    private static void AddFiles(string directory, string pattern, SearchOption searchOption, List<string> result, CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+        foreach (string file in System.IO.Directory.EnumerateFiles(directory, pattern, searchOption))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            result.Add(file);
+        }
+    }
+
+    public ValueTask CopyDirectory(string sourceDir, string destDir, bool overwrite = true, CancellationToken cancellationToken = default) =>
+        CopyDirectory(sourceDir, destDir, overwrite, 4, cancellationToken);
+
+    public async ValueTask CopyDirectory(string sourceDir, string destDir, bool overwrite, int maxDegreeOfParallelism,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(maxDegreeOfParallelism, 1);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        await Parallel.ForEachAsync(EnumerateCopyFiles(sourceDir, destDir, cancellationToken),
+            new ParallelOptions {MaxDegreeOfParallelism = maxDegreeOfParallelism, CancellationToken = cancellationToken},
+            async (entry, token) =>
+            {
+                token.ThrowIfCancellationRequested();
+                if (!overwrite && File.Exists(entry.DestinationPath))
+                    return;
+
+                await using var sourceStream = new FileStream(entry.SourcePath, _copyReadOptions);
+                var destinationOptions = new FileStreamOptions
+                {
+                    Mode = overwrite ? FileMode.Create : FileMode.CreateNew,
+                    Access = FileAccess.Write,
+                    Share = FileShare.None,
+                    Options = FileOptions.Asynchronous | FileOptions.SequentialScan,
+                    BufferSize = 1,
+                    PreallocationSize = sourceStream.Length
+                };
+                await using var destinationStream = new FileStream(entry.DestinationPath, destinationOptions);
+                await sourceStream.CopyToAsync(destinationStream, _copyBufferSize, token).NoSync();
+            }).NoSync();
+    }
+
+    private static IEnumerable<CopyEntry> EnumerateCopyFiles(string sourceDir, string destDir, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
         if (!System.IO.Directory.Exists(sourceDir))
             throw new DirectoryNotFoundException($"Source directory not found: {sourceDir}");
-
-        var dstOpts = new FileStreamOptions
-        {
-            Mode = overwrite ? FileMode.Create : FileMode.CreateNew,
-            Access = FileAccess.Write,
-            Share = FileShare.None,
-            Options = FileOptions.Asynchronous | FileOptions.SequentialScan,
-            BufferSize = 1
-        };
 
         var pending = new Stack<(string Source, string Destination)>();
         pending.Push((sourceDir, destDir));
 
+        // ForEachAsync serializes enumeration; directories exist before their files
+        // are yielded, while a bounded number of workers copy those files.
         while (pending.TryPop(out var current))
         {
             cancellationToken.ThrowIfCancellationRequested();
             System.IO.Directory.CreateDirectory(current.Destination);
 
             string destination = current.Destination;
-            var entries = new FileSystemEnumerable<CopyEntry>(current.Source, (ref FileSystemEntry entry) =>
+            var entries = new FileSystemEnumerable<CopyEntry>(current.Source, (ref entry) =>
                 new CopyEntry(entry.ToFullPath(), System.IO.Path.Join(destination.AsSpan(), entry.FileName), entry.IsDirectory, entry.Attributes),
                 _allEntriesEnumerationOptions);
 
             foreach (CopyEntry entry in entries)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-
                 if ((entry.Attributes & FileAttributes.ReparsePoint) != 0)
                     continue;
 
                 if (entry.IsDirectory)
-                {
                     pending.Push((entry.SourcePath, entry.DestinationPath));
-                    continue;
-                }
-
-                if (!overwrite && File.Exists(entry.DestinationPath))
-                    continue;
-
-                await using var sourceStream = new FileStream(entry.SourcePath, _copyReadOptions);
-                dstOpts.PreallocationSize = sourceStream.Length;
-                await using var destinationStream = new FileStream(entry.DestinationPath, dstOpts);
-
-                await sourceStream.CopyToAsync(destinationStream, _copyBufferSize, cancellationToken).NoSync();
+                else
+                    yield return entry;
             }
         }
     }
@@ -622,7 +693,7 @@ public sealed class DirectoryUtil : IDirectoryUtil
                 {
                     // Enumerate each directory once. File paths and FileInfo objects
                     // are never materialized; only subdirectory paths are allocated.
-                    var entries = new FileSystemEnumerable<SizeEntry>(currentDir, static (ref FileSystemEntry entry) =>
+                    var entries = new FileSystemEnumerable<SizeEntry>(currentDir, static (ref entry) =>
                     {
                         if ((entry.Attributes & FileAttributes.ReparsePoint) != 0)
                             return new SizeEntry(null, 0);
@@ -642,9 +713,9 @@ public sealed class DirectoryUtil : IDirectoryUtil
                 }
                 else
                 {
-                    var files = new FileSystemEnumerable<long>(currentDir, static (ref FileSystemEntry entry) => entry.Length)
+                    var files = new FileSystemEnumerable<long>(currentDir, static (ref entry) => entry.Length)
                     {
-                        ShouldIncludePredicate = static (ref FileSystemEntry entry) => !entry.IsDirectory
+                        ShouldIncludePredicate = static (ref entry) => !entry.IsDirectory
                     };
 
                     foreach (var length in files)

@@ -122,15 +122,49 @@ public interface IDirectoryUtil
     /// <summary>
     /// Gets all files in the directory that match the given extension.
     /// </summary>
-    /// <returns>The all files in the directory that match the given extension.</returns>
+    /// <remarks>Recursive searches use up to eight workers. Result ordering is unspecified.</remarks>
+    /// <returns>All files in the directory that match the given extension.</returns>
     [Pure]
     ValueTask<List<string>> GetFilesByExtension(string directory, string extension, bool recursive = false, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Gets files matching an extension with a configurable limit on recursive search concurrency.
+    /// </summary>
+    /// <param name="directory">The directory to search.</param>
+    /// <param name="extension">The extension, with or without a leading dot; empty matches all files.</param>
+    /// <param name="recursive">Whether to search subdirectories.</param>
+    /// <param name="maxDegreeOfParallelism">The maximum number of concurrent subtree scans. Must be positive; one scans sequentially.</param>
+    /// <param name="cancellationToken">Signals that the search should stop.</param>
+    /// <returns>All matching file paths, in unspecified order.</returns>
+    /// <remarks>Nonrecursive searches run sequentially. Multiple concurrent failures may be reported as an <see cref="AggregateException"/>.</remarks>
+    /// <exception cref="ArgumentOutOfRangeException">The concurrency limit is less than one.</exception>
+    [Pure]
+    ValueTask<List<string>> GetFilesByExtension(string directory, string extension, bool recursive, int maxDegreeOfParallelism,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Asynchronously copies the contents of one directory to another.
     /// </summary>
-    /// <returns>Asynchronously copies the contents of one directory to another.</returns>
+    /// <remarks>Copies up to four files concurrently, skips reparse points, and preserves empty directories.
+    /// Existing destination files are skipped when overwrite is false. Cancellation or failure can leave a partial copy;
+    /// all started copies finish or stop before the operation completes.</remarks>
+    /// <returns>An awaitable that completes after all file copies have stopped.</returns>
     ValueTask CopyDirectory(string sourceDir, string destDir, bool overwrite = true, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Copies a directory with a configurable limit on concurrent file copies.
+    /// </summary>
+    /// <param name="sourceDir">The source directory.</param>
+    /// <param name="destDir">The destination directory.</param>
+    /// <param name="overwrite">Whether to replace existing files; false skips them.</param>
+    /// <param name="maxDegreeOfParallelism">The maximum concurrent file copies. Must be positive; one copies sequentially.</param>
+    /// <param name="cancellationToken">Signals that copying should stop.</param>
+    /// <returns>An awaitable that completes after all started copies have finished or stopped.</returns>
+    /// <remarks>Skips reparse points and preserves empty directories. Cancellation or failure may leave a partial copy.</remarks>
+    /// <exception cref="ArgumentOutOfRangeException">The concurrency limit is less than one.</exception>
+    ValueTask CopyDirectory(string sourceDir, string destDir, bool overwrite, int maxDegreeOfParallelism,
+        CancellationToken cancellationToken = default);
+
 
     /// <summary>
     /// Moves a directory to a new location.

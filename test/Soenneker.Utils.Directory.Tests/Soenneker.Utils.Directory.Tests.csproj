@@ -29,5 +29,8 @@
     <ItemGroup>
         <PackageReference Include="AwesomeAssertions" Version="9.6.0" />
     </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Soenneker.Utils.File" Version="4.0.2280" />
+  </ItemGroup>
 </Project>
 

@@ -1,3 +1,5 @@
+using Soenneker.Utils.MemoryStream;
+using Soenneker.Utils.File.Abstract;
 using BenchmarkDotNet.Attributes;
 using Microsoft.Extensions.Logging.Abstractions;
 using System;
@@ -8,11 +10,13 @@ namespace Soenneker.Utils.Directory.Tests.Benchmarking.Benchmarks;
 [MemoryDiagnoser]
 public class DirectoryUtilBenchmarks
 {
+    private readonly IFileUtil _fileUtil = new Soenneker.Utils.File.FileUtil(NullLogger<Soenneker.Utils.File.FileUtil>.Instance, new MemoryStreamUtil());
+
     private readonly DirectoryUtil _util = new(null!, NullLogger<DirectoryUtil>.Instance);
     private string _root = null!;
 
     [GlobalSetup]
-    public void Setup()
+    public async Task Setup()
     {
         _root = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"directory-util-benchmarks-{Guid.NewGuid():N}");
         var content = new byte[4 * 1024];
@@ -27,10 +31,10 @@ public class DirectoryUtilBenchmarks
                 System.IO.Directory.CreateDirectory(child);
 
                 if ((childIndex & 1) == 0)
-                    System.IO.File.WriteAllBytes(System.IO.Path.Combine(child, "content.bin"), content);
+                    await _fileUtil.Write(System.IO.Path.Combine(child, "content.bin"), content);
 
                 if (childIndex == 0)
-                    System.IO.File.WriteAllBytes(System.IO.Path.Combine(child, "target.file"), content);
+                    await _fileUtil.Write(System.IO.Path.Combine(child, "target.file"), content);
             }
         }
     }

@@ -1,3 +1,4 @@
+using Soenneker.Utils.File.Abstract;
 using AwesomeAssertions;
 using Soenneker.Utils.Directory.Abstract;
 using Soenneker.Tests.HostedUnit;
@@ -14,10 +15,12 @@ namespace Soenneker.Utils.Directory.Tests;
 public class DirectoryUtilTests : HostedUnitTest
 {
     private readonly IDirectoryUtil _util;
+    private readonly IFileUtil _fileUtil;
 
     public DirectoryUtilTests(Host host) : base(host)
     {
         _util = Resolve<IDirectoryUtil>(true);
+        _fileUtil = Resolve<IFileUtil>(true);
     }
 
     [Test]
@@ -29,7 +32,7 @@ public class DirectoryUtilTests : HostedUnitTest
     [Test]
     public async ValueTask Delete_ShouldDeleteDirectoriesContainingReadOnlyFiles(CancellationToken cancellationToken)
     {
-        string root = CreateDirectoryContainingReadOnlyGitObject();
+        string root = await CreateDirectoryContainingReadOnlyGitObject();
 
         try
         {
@@ -46,7 +49,7 @@ public class DirectoryUtilTests : HostedUnitTest
     [Test]
     public async ValueTask DeleteIfExists_ShouldDeleteDirectoriesContainingReadOnlyFiles(CancellationToken cancellationToken)
     {
-        string root = CreateDirectoryContainingReadOnlyGitObject();
+        string root = await CreateDirectoryContainingReadOnlyGitObject();
 
         try
         {
@@ -69,8 +72,8 @@ public class DirectoryUtilTests : HostedUnitTest
         {
             var child = System.IO.Path.Combine(root, "child");
             System.IO.Directory.CreateDirectory(child);
-            await System.IO.File.WriteAllBytesAsync(System.IO.Path.Combine(root, "root.bin"), new byte[11]);
-            await System.IO.File.WriteAllBytesAsync(System.IO.Path.Combine(child, "child.bin"), new byte[17]);
+            await _fileUtil.Write(System.IO.Path.Combine(root, "root.bin"), new byte[11]);
+            await _fileUtil.Write(System.IO.Path.Combine(child, "child.bin"), new byte[17]);
 
             var recursive = await _util.GetSizeInBytes(root, cancellationToken: cancellationToken);
             var topLevel = await _util.GetSizeInBytes(root, new GetSizeOptions {Recursive = false}, cancellationToken: cancellationToken);
@@ -95,7 +98,7 @@ public class DirectoryUtilTests : HostedUnitTest
             var nonempty = System.IO.Path.Combine(root, "nonempty");
             System.IO.Directory.CreateDirectory(emptyLeaf);
             System.IO.Directory.CreateDirectory(nonempty);
-            await System.IO.File.WriteAllTextAsync(System.IO.Path.Combine(nonempty, "content.txt"), "content");
+            await _fileUtil.Write(System.IO.Path.Combine(nonempty, "content.txt"), "content");
 
             var emptyDirectories = await _util.GetEmptyDirectories(root, cancellationToken: cancellationToken);
             emptyDirectories.Should().ContainSingle().Which.Should().Be(emptyLeaf);
@@ -122,8 +125,8 @@ public class DirectoryUtilTests : HostedUnitTest
             var other = System.IO.Path.Combine(root, "other");
             System.IO.Directory.CreateDirectory(matching);
             System.IO.Directory.CreateDirectory(other);
-            await System.IO.File.WriteAllTextAsync(System.IO.Path.Combine(root, "target.txt"), "excluded root match");
-            await System.IO.File.WriteAllTextAsync(System.IO.Path.Combine(matching, "target.txt"), "match");
+            await _fileUtil.Write(System.IO.Path.Combine(root, "target.txt"), "excluded root match");
+            await _fileUtil.Write(System.IO.Path.Combine(matching, "target.txt"), "match");
 
             var result = await _util.GetDirectoriesContainingFile(root, "target.txt", cancellationToken: cancellationToken);
 
@@ -147,12 +150,12 @@ public class DirectoryUtilTests : HostedUnitTest
             string empty = System.IO.Path.Combine(source, "empty");
             System.IO.Directory.CreateDirectory(nested);
             System.IO.Directory.CreateDirectory(empty);
-            await System.IO.File.WriteAllTextAsync(System.IO.Path.Combine(nested, "content.txt"), "content", cancellationToken);
+            await _fileUtil.Write(System.IO.Path.Combine(nested, "content.txt"), "content", cancellationToken: cancellationToken);
 
             await _util.CopyDirectory(source, destination, cancellationToken: cancellationToken);
 
             System.IO.Directory.Exists(System.IO.Path.Combine(destination, "empty")).Should().BeTrue();
-            string content = await System.IO.File.ReadAllTextAsync(System.IO.Path.Combine(destination, "nested", "content.txt"), cancellationToken);
+            string content = await _fileUtil.Read(System.IO.Path.Combine(destination, "nested", "content.txt"), cancellationToken: cancellationToken);
             content.Should().Be("content");
         }
         finally
@@ -176,8 +179,8 @@ public class DirectoryUtilTests : HostedUnitTest
                 System.IO.Directory.CreateDirectory(directory);
                 if (relative == "empty")
                     continue;
-                await System.IO.File.WriteAllTextAsync(System.IO.Path.Combine(directory, "solution.slnx"), "", cancellationToken);
-                await System.IO.File.WriteAllTextAsync(System.IO.Path.Combine(directory, "other.txt"), "", cancellationToken);
+                await _fileUtil.Write(System.IO.Path.Combine(directory, "solution.slnx"), "", cancellationToken: cancellationToken);
+                await _fileUtil.Write(System.IO.Path.Combine(directory, "other.txt"), "", cancellationToken: cancellationToken);
             }
 
             foreach (string searchRoot in new[] { root, System.IO.Path.GetRelativePath(Environment.CurrentDirectory, root) })
@@ -228,7 +231,7 @@ public class DirectoryUtilTests : HostedUnitTest
                 var content = new byte[index * 32769];
                 new System.Random(index).NextBytes(content);
                 expected.Add(relative, content);
-                await System.IO.File.WriteAllBytesAsync(path, content, cancellationToken);
+                await _fileUtil.Write(path, content, cancellationToken: cancellationToken);
             }
             System.IO.Directory.CreateDirectory(System.IO.Path.Combine(source, "empty", "nested"));
 
@@ -237,20 +240,20 @@ public class DirectoryUtilTests : HostedUnitTest
                 string destination = System.IO.Path.Combine(root, $"destination-{degree}");
                 System.IO.Directory.CreateDirectory(System.IO.Path.Combine(destination, "child-0"));
                 string existing = System.IO.Path.Combine(destination, "child-0", "file-0.bin");
-                await System.IO.File.WriteAllTextAsync(existing, "keep", cancellationToken);
+                await _fileUtil.Write(existing, "keep", cancellationToken: cancellationToken);
                 await _util.CopyDirectory(source, destination, false, degree, cancellationToken);
-                (await System.IO.File.ReadAllTextAsync(existing, cancellationToken)).Should().Be("keep");
+                (await _fileUtil.Read(existing, cancellationToken: cancellationToken)).Should().Be("keep");
                 foreach (var file in expected)
                 {
                     if (file.Key == System.IO.Path.Combine("child-0", "file-0.bin"))
                         continue;
-                    byte[] actual = await System.IO.File.ReadAllBytesAsync(System.IO.Path.Combine(destination, file.Key), cancellationToken);
+                    byte[] actual = await _fileUtil.ReadToBytes(System.IO.Path.Combine(destination, file.Key), cancellationToken: cancellationToken);
                     actual.AsSpan().SequenceEqual(file.Value).Should().BeTrue();
                 }
                 await _util.CopyDirectory(source, destination, true, degree, cancellationToken);
                 foreach (var file in expected)
                 {
-                    byte[] actual = await System.IO.File.ReadAllBytesAsync(System.IO.Path.Combine(destination, file.Key), cancellationToken);
+                    byte[] actual = await _fileUtil.ReadToBytes(System.IO.Path.Combine(destination, file.Key), cancellationToken: cancellationToken);
                     actual.AsSpan().SequenceEqual(file.Value).Should().BeTrue();
                 }
                 System.IO.Directory.Exists(System.IO.Path.Combine(destination, "empty", "nested")).Should().BeTrue();
@@ -309,14 +312,14 @@ public class DirectoryUtilTests : HostedUnitTest
         return path;
     }
 
-    private static string CreateDirectoryContainingReadOnlyGitObject()
+    private async Task<string> CreateDirectoryContainingReadOnlyGitObject()
     {
         string root = CreateTempDirectory();
         string objectDirectory = System.IO.Path.Combine(root, ".git", "objects", "63");
         System.IO.Directory.CreateDirectory(objectDirectory);
 
         string objectPath = System.IO.Path.Combine(objectDirectory, "6866ce7d1a7d233781c80f2c9d3187c46274");
-        System.IO.File.WriteAllText(objectPath, "git object");
+        await _fileUtil.Write(objectPath, "git object");
         System.IO.File.SetAttributes(objectPath, System.IO.File.GetAttributes(objectPath) | System.IO.FileAttributes.ReadOnly);
         return root;
     }

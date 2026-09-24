@@ -1,3 +1,4 @@
+using Soenneker.Utils.File.Registrars;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Serilog;
@@ -26,6 +27,6 @@ public class Host : UnitTestHost
         var config = TestUtil.BuildConfig();
         services.AddSingleton(config);
 
-        services.AddDirectoryUtilAsScoped();
+        services.AddDirectoryUtilAsScoped().AddFileUtilAsSingleton();
     }
 }

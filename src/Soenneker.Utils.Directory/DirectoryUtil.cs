@@ -1,4 +1,4 @@
-﻿using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging;
 using Soenneker.Utils.Directory.Abstract;
 using Soenneker.Utils.Path.Abstract;
 using System;
@@ -20,7 +20,7 @@ namespace Soenneker.Utils.Directory;
 public sealed class DirectoryUtil : IDirectoryUtil
 {
     private const int _copyBufferSize = 128 * 1024;
-    private static readonly string _workingDirectory = System.IO.Path.GetDirectoryName(typeof(DirectoryUtil).Assembly.Location)!;
+    private static readonly string _workingDirectory = System.IO.Path.TrimEndingDirectorySeparator(AppContext.BaseDirectory);
 
     private static readonly EnumerationOptions _allEntriesEnumerationOptions = new() {AttributesToSkip = 0};
 

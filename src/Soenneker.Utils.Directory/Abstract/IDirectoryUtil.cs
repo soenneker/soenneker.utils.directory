@@ -1,4 +1,4 @@
-﻿using Soenneker.Utils.Directory.Dtos;
+using Soenneker.Utils.Directory.Dtos;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.Contracts;
@@ -80,9 +80,9 @@ public interface IDirectoryUtil
     ValueTask CreateStrict(string directory, bool log = true, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Gets the working directory of the currently executing assembly.
+    /// Gets the application base directory, including in single-file and Native AOT deployments.
     /// </summary>
-    /// <returns>The the working directory of the currently executing assembly.</returns>
+    /// <returns>The application base directory without a trailing separator, unless it is a filesystem root.</returns>
     [Pure]
     string GetWorkingDirectory(bool log = false);
 

@@ -32,7 +32,7 @@ public class DirectoryUtilTests : HostedUnitTest
     [Test]
     public async ValueTask Delete_ShouldDeleteDirectoriesContainingReadOnlyFiles(CancellationToken cancellationToken)
     {
-        string root = await CreateDirectoryContainingReadOnlyGitObject();
+        string root = await CreateDirectoryContainingReadOnlyGitObject(cancellationToken: cancellationToken);
 
         try
         {
@@ -49,7 +49,7 @@ public class DirectoryUtilTests : HostedUnitTest
     [Test]
     public async ValueTask DeleteIfExists_ShouldDeleteDirectoriesContainingReadOnlyFiles(CancellationToken cancellationToken)
     {
-        string root = await CreateDirectoryContainingReadOnlyGitObject();
+        string root = await CreateDirectoryContainingReadOnlyGitObject(cancellationToken: cancellationToken);
 
         try
         {
@@ -72,8 +72,8 @@ public class DirectoryUtilTests : HostedUnitTest
         {
             var child = System.IO.Path.Combine(root, "child");
             System.IO.Directory.CreateDirectory(child);
-            await _fileUtil.Write(System.IO.Path.Combine(root, "root.bin"), new byte[11]);
-            await _fileUtil.Write(System.IO.Path.Combine(child, "child.bin"), new byte[17]);
+            await _fileUtil.Write(System.IO.Path.Combine(root, "root.bin"), new byte[11], cancellationToken: cancellationToken);
+            await _fileUtil.Write(System.IO.Path.Combine(child, "child.bin"), new byte[17], cancellationToken: cancellationToken);
 
             var recursive = await _util.GetSizeInBytes(root, cancellationToken: cancellationToken);
             var topLevel = await _util.GetSizeInBytes(root, new GetSizeOptions {Recursive = false}, cancellationToken: cancellationToken);
@@ -98,7 +98,7 @@ public class DirectoryUtilTests : HostedUnitTest
             var nonempty = System.IO.Path.Combine(root, "nonempty");
             System.IO.Directory.CreateDirectory(emptyLeaf);
             System.IO.Directory.CreateDirectory(nonempty);
-            await _fileUtil.Write(System.IO.Path.Combine(nonempty, "content.txt"), "content");
+            await _fileUtil.Write(System.IO.Path.Combine(nonempty, "content.txt"), "content", cancellationToken: cancellationToken);
 
             var emptyDirectories = await _util.GetEmptyDirectories(root, cancellationToken: cancellationToken);
             emptyDirectories.Should().ContainSingle().Which.Should().Be(emptyLeaf);
@@ -125,8 +125,8 @@ public class DirectoryUtilTests : HostedUnitTest
             var other = System.IO.Path.Combine(root, "other");
             System.IO.Directory.CreateDirectory(matching);
             System.IO.Directory.CreateDirectory(other);
-            await _fileUtil.Write(System.IO.Path.Combine(root, "target.txt"), "excluded root match");
-            await _fileUtil.Write(System.IO.Path.Combine(matching, "target.txt"), "match");
+            await _fileUtil.Write(System.IO.Path.Combine(root, "target.txt"), "excluded root match", cancellationToken: cancellationToken);
+            await _fileUtil.Write(System.IO.Path.Combine(matching, "target.txt"), "match", cancellationToken: cancellationToken);
 
             var result = await _util.GetDirectoriesContainingFile(root, "target.txt", cancellationToken: cancellationToken);
 
@@ -312,14 +312,14 @@ public class DirectoryUtilTests : HostedUnitTest
         return path;
     }
 
-    private async Task<string> CreateDirectoryContainingReadOnlyGitObject()
+    private async Task<string> CreateDirectoryContainingReadOnlyGitObject(CancellationToken cancellationToken = default)
     {
         string root = CreateTempDirectory();
         string objectDirectory = System.IO.Path.Combine(root, ".git", "objects", "63");
         System.IO.Directory.CreateDirectory(objectDirectory);
 
         string objectPath = System.IO.Path.Combine(objectDirectory, "6866ce7d1a7d233781c80f2c9d3187c46274");
-        await _fileUtil.Write(objectPath, "git object");
+        await _fileUtil.Write(objectPath, "git object", cancellationToken: cancellationToken);
         System.IO.File.SetAttributes(objectPath, System.IO.File.GetAttributes(objectPath) | System.IO.FileAttributes.ReadOnly);
         return root;
     }

@@ -90,7 +90,8 @@ public sealed class DirectoryUtil : IDirectoryUtil
 
     public ValueTask Delete(string directory, CancellationToken cancellationToken = default)
     {
-        _logger.LogDebug("Deleting directory ({dir}) ...", directory);
+        if (_logger.IsEnabled(LogLevel.Debug))
+            _logger.LogDebug("Deleting directory ({dir}) ...", directory);
         return ExecutionContextUtil.RunInlineOrOffload(static s =>
         {
             var (dir, token) = ((string Directory, CancellationToken Token))s;
@@ -101,7 +102,8 @@ public sealed class DirectoryUtil : IDirectoryUtil
 
     public ValueTask DeleteIfExists(string directory, CancellationToken cancellationToken = default)
     {
-        _logger.LogDebug("Deleting directory ({dir}) if it exists...", directory);
+        if (_logger.IsEnabled(LogLevel.Debug))
+            _logger.LogDebug("Deleting directory ({dir}) if it exists...", directory);
 
         return ExecutionContextUtil.RunInlineOrOffload(static s =>
         {
@@ -821,7 +823,8 @@ public sealed class DirectoryUtil : IDirectoryUtil
                 throw new IOException($"Destination directory already exists: {destDir}");
 
             System.IO.Directory.Move(dir, destDir);
-            _logger.LogDebug("Moved directory: {src} -> {dest}", dir, destDir);
+            if (_logger.IsEnabled(LogLevel.Debug))
+                _logger.LogDebug("Moved directory: {src} -> {dest}", dir, destDir);
         }
 
         foreach (var file in System.IO.Directory.EnumerateFiles(innerDir))
@@ -834,7 +837,8 @@ public sealed class DirectoryUtil : IDirectoryUtil
                 throw new IOException($"Destination file already exists: {destFile}");
 
             File.Move(file, destFile);
-            _logger.LogDebug("Moved file: {src} -> {dest}", file, destFile);
+            if (_logger.IsEnabled(LogLevel.Debug))
+                _logger.LogDebug("Moved file: {src} -> {dest}", file, destFile);
         }
 
         System.IO.Directory.Delete(innerDir, recursive: true);
